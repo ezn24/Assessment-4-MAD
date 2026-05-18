@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
+import {
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  useColorScheme,
+  View
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
 import * as Animatable from "react-native-animatable";
 // expo-haptics adds native tactile feedback to completion, toggle, and delete actions.
@@ -11,10 +23,11 @@ import * as Notifications from "expo-notifications";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
-import { format, formatDistanceStrict, isValid, parse, parseISO, set } from "date-fns";
+import { format, formatDistanceStrict, isValid, parseISO, set } from "date-fns";
 import { Calendar } from "react-native-calendars";
 import { Button, Divider, Snackbar, Switch, Text, TextInput } from "react-native-paper";
 import { useReminders } from "../hooks/useReminders";
+import { getFirebaseDebugInfo } from "../services/firebase";
 
 const PURPLE = "#4F378B";
 const LIGHT_PURPLE = "#EADDFF";
@@ -29,7 +42,8 @@ const ERROR = "#BA1A1A";
 const SUCCESS = "#146C2E";
 const DATE_DISPLAY_FORMAT = "yyyy/MM/dd";
 const DATE_INPUT_PLACEHOLDER = "yyyy/mm/dd";
-const REMINDER_CHANNEL_ID = "vizminder-reminders";
+const REMINDER_CHANNEL_ID = "vizminder-a4-reminders";
+const SETTINGS_STORAGE_KEY = "vizminder-a4-settings";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -66,30 +80,30 @@ const ICON_OPTIONS = [
   "lightbulb-outline"
 ];
 const EMOJI_OPTIONS = [
-  "🔔",
-  "🔑",
-  "🔥",
-  "🧥",
-  "💊",
-  "👟",
-  "📚",
-  "🧘",
-  "💧",
-  "🍎",
-  "☕",
-  "🪥",
-  "🗑️",
-  "✉️",
-  "📱",
-  "🛒",
-  "🏠",
-  "💼",
-  "✅",
-  "🏃",
-  "🛏️",
-  "🚗",
-  "☂️",
-  "💡"
+  "\u{1F514}",
+  "\u{1F511}",
+  "\u{1F525}",
+  "\u{1F48A}",
+  "\u{1F455}",
+  "\u{1F45F}",
+  "\u{1F4DA}",
+  "\u{1F34E}",
+  "\u{1F4A7}",
+  "\u{2615}",
+  "\u{1FAA5}",
+  "\u{1F5D1}\u{FE0F}",
+  "\u{2709}\u{FE0F}",
+  "\u{1F4F1}",
+  "\u{1F6D2}",
+  "\u{1F3E0}",
+  "\u{1F4BC}",
+  "\u{2705}",
+  "\u{1F3C3}",
+  "\u{1F6CF}\u{FE0F}",
+  "\u{1F697}",
+  "\u{2602}\u{FE0F}",
+  "\u{1F4A1}",
+  "\u{1F9D8}"
 ];
 
 function createDraftReminder() {
@@ -100,9 +114,9 @@ function createDraftReminder() {
     visualCue: "Photo or icon cue",
     visualType: "icon",
     icon: "bell-outline",
-    emoji: "🔔",
+    emoji: "\u{1F514}",
     scheduledAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-    timeSet: false,
+    timeSet: true,
     hasDate: false,
     repeat: false,
     important: true,
@@ -114,6 +128,7 @@ function createDraftReminder() {
 
 export default function HomeScreen() {
   const { reminders, markedDates, completeReminder, updateReminder, addReminder, deleteReminder, resetPrototype } = useReminders();
+  const systemScheme = useColorScheme();
   const confettiRef = useRef(null);
   const remindersRef = useRef(reminders);
   const [tab, setTab] = useState("home");
@@ -121,6 +136,14 @@ export default function HomeScreen() {
   const [editMode, setEditMode] = useState("edit");
   const [reminding, setReminding] = useState(null);
   const [message, setMessage] = useState("");
+  const [celebrating, setCelebrating] = useState(false);
+  const [settings, setSettings] = useState({
+    themeMode: "system",
+    followSystemColors: true,
+    showReminderDebugButton: false
+  });
+  const activeScheme = settings.themeMode === "system" ? systemScheme : settings.themeMode;
+  const isDark = activeScheme === "dark";
 
   const firstReminder = reminders[0];
   const activeReminder = reminding || firstReminder;
@@ -129,6 +152,24 @@ export default function HomeScreen() {
   useEffect(() => {
     remindersRef.current = reminders;
   }, [reminders]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(SETTINGS_STORAGE_KEY)
+      .then((value) => {
+        if (value) {
+          setSettings((current) => ({ ...current, ...JSON.parse(value) }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const updateSettings = (patch) => {
+    setSettings((current) => {
+      const next = { ...current, ...patch };
+      AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
 
   useEffect(() => {
     configureNotificationChannel().catch(() => {});
@@ -162,19 +203,22 @@ export default function HomeScreen() {
     completeReminder(reminder.id);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     if (reminder.important) {
-      confettiRef.current?.start();
+      setCelebrating(true);
+      requestAnimationFrame(() => confettiRef.current?.start());
     }
     setReminding(null);
   };
 
-  const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  const pickImage = async (source) => {
+    const permission =
+      source === "camera" ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      setMessage("Photo permission is needed to attach visual cues.");
+      setMessage(source === "camera" ? "Camera permission is needed to take a visual cue." : "Photo permission is needed to attach visual cues.");
       return null;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const launch = source === "camera" ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+    const result = await launch({
       allowsEditing: true,
       aspect: [1, 1],
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -185,7 +229,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, isDark && styles.safeAreaDark]}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -193,20 +237,27 @@ export default function HomeScreen() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
       >
         {reminding ? (
-          <ReminderPrompt reminder={activeReminder} onNo={() => setReminding(null)} onYes={() => handleComplete(activeReminder)} />
+          <ReminderPrompt reminder={activeReminder} isDark={isDark} onNo={() => setReminding(null)} onYes={() => handleComplete(activeReminder)} />
         ) : editing ? (
           <TaskEditScreen
             reminder={editing}
             mode={editMode}
+            isDark={isDark}
             onUpdate={(patch) => {
               setEditing((current) => ({ ...current, ...patch }));
             }}
             onAttachImage={async () => {
-              const imageUri = await pickImage();
-              if (!imageUri) {
-                return;
-              }
-              setEditing((current) => ({ ...current, imageUri }));
+              Alert.alert("Photo visual cue", "Choose how to attach an image.", [
+                { text: "Choose from phone", onPress: async () => {
+                    const imageUri = await pickImage("library");
+                    if (imageUri) setEditing((current) => ({ ...current, imageUri, visualType: "image" }));
+                  } },
+                { text: "Take photo", onPress: async () => {
+                    const imageUri = await pickImage("camera");
+                    if (imageUri) setEditing((current) => ({ ...current, imageUri, visualType: "image" }));
+                  } },
+                { text: "Cancel", style: "cancel" }
+              ]);
             }}
             onSave={async () => {
               if (!editing.title.trim()) {
@@ -264,6 +315,8 @@ export default function HomeScreen() {
                   reminders={reminders}
                   markedDates={markedDates}
                   onTestReminder={setReminding}
+                  showReminderDebugButton={settings.showReminderDebugButton}
+                  isDark={isDark}
                   onEdit={(reminder) => {
                     setEditMode("edit");
                     setEditing({ ...reminder });
@@ -275,6 +328,10 @@ export default function HomeScreen() {
                         await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
                       }
                       const notificationId = completed ? null : await scheduleReminderNotification({ ...reminder, completed: false });
+                      if (completed && reminder.important) {
+                        setCelebrating(true);
+                        requestAnimationFrame(() => confettiRef.current?.start());
+                      }
                       updateReminder(reminder.id, {
                         completed,
                         completedAt: completed ? new Date().toISOString() : null,
@@ -299,15 +356,19 @@ export default function HomeScreen() {
                 <ScheduleTab
                   markedDates={markedDates}
                   reminders={reminders}
+                  isDark={isDark}
                   onEdit={(reminder) => {
                     setEditMode("edit");
                     setEditing({ ...reminder });
                   }}
                 />
               ) : tab === "account" ? (
-                <AccountTab completedCount={completedCount} />
+                <AccountTab completedCount={completedCount} isDark={isDark} />
               ) : (
                 <SettingsTab
+                  settings={settings}
+                  onUpdateSettings={updateSettings}
+                  isDark={isDark}
                   onReset={() => {
                     Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
                     resetPrototype();
@@ -317,12 +378,21 @@ export default function HomeScreen() {
                 />
               )}
             </Animatable.View>
-            <BottomNav active={tab} onChange={setTab} />
+            <BottomNav active={tab} isDark={isDark} onChange={setTab} />
           </>
         )}
       </KeyboardAvoidingView>
 
-      <ConfettiCannon ref={confettiRef} count={80} origin={{ x: -10, y: 0 }} autoStart={false} fadeOut />
+      {celebrating ? (
+        <ConfettiCannon
+          ref={confettiRef}
+          count={80}
+          origin={{ x: 180, y: 0 }}
+          autoStart={false}
+          fadeOut
+          onAnimationEnd={() => setCelebrating(false)}
+        />
+      ) : null}
       <Snackbar visible={Boolean(message)} onDismiss={() => setMessage("")} duration={3200}>
         {message}
       </Snackbar>
@@ -339,7 +409,7 @@ function ScreenTitle({ children, action }) {
   );
 }
 
-function HomeTab({ reminders, markedDates, onTestReminder, onEdit, onToggle, onAdd, onDelete }) {
+function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButton, isDark, onEdit, onToggle, onAdd, onDelete }) {
   const [query, setQuery] = useState("");
   const visibleReminders = reminders.filter((reminder) => {
     const haystack = `${reminder.title} ${reminder.description || ""}`.toLowerCase();
@@ -347,7 +417,7 @@ function HomeTab({ reminders, markedDates, onTestReminder, onEdit, onToggle, onA
   });
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, isDark && styles.screenDark]}>
       <ScreenTitle>Home</ScreenTitle>
       <ScrollView style={styles.flex} contentContainerStyle={styles.homeList}>
         {!visibleReminders.length ? (
@@ -382,9 +452,11 @@ function HomeTab({ reminders, markedDates, onTestReminder, onEdit, onToggle, onA
                 {reminder.description ? <Text style={styles.taskDescription}>{reminder.description}</Text> : null}
               </View>
               <View style={styles.taskActions}>
+              {showReminderDebugButton ? (
                 <Pressable style={styles.testButton} onPress={() => onTestReminder(reminder)}>
                   <MaterialCommunityIcons name="play-circle-outline" size={22} color={PURPLE} />
                 </Pressable>
+              ) : null}
                 <Switch value={reminder.completed} color={PURPLE} onValueChange={(value) => onToggle(reminder, value)} />
               </View>
             </Pressable>
@@ -413,7 +485,7 @@ function HomeTab({ reminders, markedDates, onTestReminder, onEdit, onToggle, onA
   );
 }
 
-function ScheduleTab({ markedDates, reminders, onEdit }) {
+function ScheduleTab({ markedDates, reminders, isDark, onEdit }) {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const selectedReminders = reminders.filter(
     (reminder) => reminder.hasDate !== false && format(parseISO(reminder.scheduledAt), "yyyy-MM-dd") === selectedDate
@@ -429,10 +501,10 @@ function ScheduleTab({ markedDates, reminders, onEdit }) {
   };
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, isDark && styles.screenDark]}>
       <ScreenTitle>Schedule</ScreenTitle>
       <ScrollView contentContainerStyle={styles.scheduleContent}>
-        <View style={styles.materialCard}>
+        <View style={[styles.materialCard, isDark && styles.materialCardDark]}>
           <Text style={styles.sectionTitle}>Month task distribution</Text>
           <Calendar
             markedDates={selectedMarkedDates}
@@ -448,7 +520,7 @@ function ScheduleTab({ markedDates, reminders, onEdit }) {
             }}
           />
         </View>
-        <View style={styles.materialCard}>
+        <View style={[styles.materialCard, isDark && styles.materialCardDark]}>
           <Text style={styles.sectionTitle}>{format(parseISO(selectedDate), DATE_DISPLAY_FORMAT)} reminders</Text>
           {selectedReminders.length ? (
             selectedReminders.map((reminder) => (
@@ -484,9 +556,9 @@ function SwipeDeleteAction({ onPress }) {
   );
 }
 
-function ReminderPrompt({ reminder, onNo, onYes }) {
+function ReminderPrompt({ reminder, isDark, onNo, onYes }) {
   return (
-    <Animatable.View animation="fadeInUp" duration={260} style={styles.reminderScreen} useNativeDriver>
+    <Animatable.View animation="fadeInUp" duration={260} style={[styles.reminderScreen, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle>VizMinder</ScreenTitle>
       <VisualCue reminder={reminder} size={104} iconSize={48} />
       <View style={styles.reminderCopy}>
@@ -505,12 +577,15 @@ function ReminderPrompt({ reminder, onNo, onYes }) {
   );
 }
 
-function TaskEditScreen({ reminder, mode, onUpdate, onAttachImage, onSave, onCancel, onDelete }) {
+function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSave, onCancel, onDelete }) {
   const [timeOpen, setTimeOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
+  const currentScheduled = isValid(parseISO(reminder.scheduledAt)) ? parseISO(reminder.scheduledAt) : new Date();
+  const timePickerValue = reminder.timeSet === false ? new Date() : currentScheduled;
+  const datePickerValue = reminder.hasDate === false ? new Date() : currentScheduled;
 
   return (
-    <Animatable.View animation="fadeInUp" duration={240} style={styles.screen} useNativeDriver>
+    <Animatable.View animation="fadeInUp" duration={240} style={[styles.screen, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle>{mode === "add" ? "Add Task" : "Edit Task"}</ScreenTitle>
       <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled">
         <View style={styles.imageEditWrap}>
@@ -564,20 +639,58 @@ function TaskEditScreen({ reminder, mode, onUpdate, onAttachImage, onSave, onCan
         </View>
       </ScrollView>
 
-      <TimeDialog
-        visible={timeOpen}
-        value={reminder.scheduledAt}
-        onConfirm={(nextDate) => onUpdate({ scheduledAt: nextDate.toISOString(), timeSet: true })}
-        onDismiss={() => setTimeOpen(false)}
-      />
-      <DateDialog
-        visible={dateOpen}
-        value={reminder.scheduledAt}
-        hasDate={reminder.hasDate !== false}
-        repeat={Boolean(reminder.repeat)}
-        onConfirm={(nextDate, repeat) => onUpdate({ scheduledAt: nextDate.toISOString(), hasDate: true, repeat })}
-        onDismiss={() => setDateOpen(false)}
-      />
+      {timeOpen ? (
+        <DateTimePicker
+          value={timePickerValue}
+          mode="time"
+          display={Platform.OS === "android" ? "clock" : "default"}
+          design={Platform.OS === "android" ? "material" : undefined}
+          initialInputMode="default"
+          is24Hour
+          positiveButton={{ label: "OK", textColor: PURPLE }}
+          negativeButton={{ label: "Cancel", textColor: MUTED }}
+          onChange={(event, selectedDate) => {
+            setTimeOpen(Platform.OS === "ios");
+            if (event.type === "set" && selectedDate) {
+              const nextDate = set(currentScheduled, {
+                hours: selectedDate.getHours(),
+                minutes: selectedDate.getMinutes(),
+                seconds: 0,
+                milliseconds: 0
+              });
+              onUpdate({ scheduledAt: nextDate.toISOString(), timeSet: true });
+            }
+          }}
+        />
+      ) : null}
+      {dateOpen ? (
+        <DateTimePicker
+          value={datePickerValue}
+          mode="date"
+          display={Platform.OS === "android" ? "calendar" : "default"}
+          design={Platform.OS === "android" ? "material" : undefined}
+          initialInputMode="default"
+          positiveButton={{ label: "OK", textColor: PURPLE }}
+          negativeButton={{ label: "Cancel", textColor: MUTED }}
+          neutralButton={{ label: "Clear", textColor: MUTED }}
+          onChange={(event, selectedDate) => {
+            setDateOpen(Platform.OS === "ios");
+            if (event.type === "neutralButtonPressed") {
+              onUpdate({ hasDate: false });
+              return;
+            }
+            if (event.type === "set" && selectedDate) {
+              const nextDate = set(selectedDate, {
+                hours: currentScheduled.getHours(),
+                minutes: currentScheduled.getMinutes(),
+                seconds: 0,
+                milliseconds: 0
+              });
+              onUpdate({ scheduledAt: nextDate.toISOString(), hasDate: true });
+            }
+          }}
+        />
+      ) : null}
     </Animatable.View>
   );
 }
@@ -621,11 +734,11 @@ function EditTextField({ label, value, onChangeText, multiline = false }) {
   );
 }
 
-function AccountTab({ completedCount }) {
+function AccountTab({ completedCount, isDark }) {
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, isDark && styles.screenDark]}>
       <ScreenTitle>Account</ScreenTitle>
-      <View style={styles.accountCard}>
+      <View style={[styles.accountCard, isDark && styles.materialCardDark]}>
         <View style={styles.avatar}>
           <MaterialCommunityIcons name="account-outline" size={36} color={PURPLE} />
         </View>
@@ -634,7 +747,7 @@ function AccountTab({ completedCount }) {
           <Text style={styles.accountPlan}>Free Plan</Text>
         </View>
       </View>
-      <View style={styles.planBlock}>
+      <View style={[styles.planBlock, isDark && styles.materialCardDark]}>
         <Text style={styles.planTitle}>Plan</Text>
         <Text style={styles.planCopy}>Upgrade for more Feature!</Text>
         <Text style={styles.planCopy}>Completed reminders: {completedCount}</Text>
@@ -651,18 +764,81 @@ function AccountTab({ completedCount }) {
   );
 }
 
-function SettingsTab({ onReset, onMessage }) {
+function SettingsTab({ settings, onUpdateSettings, isDark, onReset, onMessage }) {
   const items = [
-    ["message-outline", "Notification", "Grant permission\nChange notification type.", () => onMessage("Notification permission prototype.")],
-    ["swap-vertical", "Sync Data", "Back up reminders and visual cues.", () => onMessage("Reminder sync queued.")],
+    ["message-outline", "Notification", "Grant permission and send a test alert.", async () => {
+      const granted = await ensureNotificationPermission();
+      if (!granted) {
+        onMessage("Notification permission was not granted.");
+        return;
+      }
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "VizMinder test notification",
+          body: "Notifications are enabled for installed APK builds.",
+          sound: "default",
+          priority: Notifications.AndroidNotificationPriority.MAX
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 3, channelId: REMINDER_CHANNEL_ID }
+      });
+      onMessage("Test notification scheduled.");
+    }],
+    ["swap-vertical", "Sync Data", "Back up reminders and visual cues.", () => {
+      const info = getFirebaseDebugInfo();
+      onMessage(info.configured ? `Cloud sync is using Firestore project: ${info.projectId}.` : "Firebase config is missing; reminders are stored locally only.");
+    }],
     ["shield-lock-outline", "Privacy", "Review local storage and image access.", () => onMessage("Reminder data stays local unless cloud sync is configured.")],
-    ["restart", "Reset Reminders", "Restore sample reminders.", onReset]
+    ["restart", "Reset Reminders", "Clear all reminders on this device.", onReset]
   ];
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, isDark && styles.screenDark]}>
       <ScreenTitle>Settings</ScreenTitle>
-      <View style={styles.settingsList}>
+      <View style={[styles.settingsPanel, isDark && styles.materialCardDark]}>
+        <Text style={styles.sectionTitle}>Theme</Text>
+        <View style={styles.segmentedControl}>
+          {[
+            ["light", "Light"],
+            ["dark", "Dark"],
+            ["system", "System"]
+          ].map(([mode, label]) => (
+            <Pressable
+              key={mode}
+              style={[styles.segmentButton, settings.themeMode === mode && styles.segmentButtonActive]}
+              onPress={() => onUpdateSettings({ themeMode: mode })}
+            >
+              <Text style={[styles.segmentText, settings.themeMode === mode && styles.segmentTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.settingsSwitchRow}>
+          <View style={styles.settingsCopy}>
+            <Text style={styles.settingsTitle}>Follow system Material colors</Text>
+            <Text style={styles.settingsDescription}>
+              {settings.followSystemColors ? "Use system color preference when available." : "Use VizMinder purple palette."}
+            </Text>
+          </View>
+          <Switch value={settings.followSystemColors} color={PURPLE} onValueChange={(value) => onUpdateSettings({ followSystemColors: value })} />
+        </View>
+      </View>
+      <View style={[styles.settingsPanel, isDark && styles.materialCardDark]}>
+        <Text style={styles.sectionTitle}>Advanced</Text>
+        <View style={styles.settingsSwitchRow}>
+          <View style={styles.settingsCopy}>
+            <Text style={styles.settingsTitle}>Reminder debug button</Text>
+            <Text style={styles.settingsDescription}>Show the Home test button for the Yes/No prompt.</Text>
+          </View>
+          <Switch
+            value={settings.showReminderDebugButton}
+            color={PURPLE}
+            onValueChange={(value) => onUpdateSettings({ showReminderDebugButton: value })}
+          />
+        </View>
+        <Text style={styles.settingsDescription}>
+          Full-screen lock-screen alarm UI needs a custom native Android activity/full-screen intent. This Expo APK uses high-priority lock-screen notifications and opens the Yes/No prompt after tapping the notification.
+        </Text>
+      </View>
+      <View style={[styles.settingsList, isDark && styles.materialCardDark]}>
         {items.map(([icon, title, copy, action]) => (
           <Pressable key={title} onPress={action}>
             <View style={styles.settingsRow}>
@@ -680,7 +856,7 @@ function SettingsTab({ onReset, onMessage }) {
   );
 }
 
-function BottomNav({ active, onChange }) {
+function BottomNav({ active, isDark, onChange }) {
   const tabs = [
     ["home", "bell-outline", "Home"],
     ["schedule", "calendar-month-outline", "Schedule"],
@@ -689,7 +865,7 @@ function BottomNav({ active, onChange }) {
   ];
 
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, isDark && styles.bottomNavDark]}>
       {tabs.map(([key, icon, label]) => (
         <Pressable key={key} style={styles.navItem} onPress={() => onChange(key)}>
           <View style={[styles.navIconWrap, active === key && styles.navIconActive]}>
@@ -724,7 +900,7 @@ function VisualCue({ reminder, size, iconSize, compact = false }) {
               : { fontSize: iconSize, lineHeight: iconSize + 10 }
           ]}
         >
-          {reminder.emoji || "🔔"}
+          {reminder.emoji || "\u{1F514}"}
         </Text>
       </View>
     );
@@ -753,6 +929,7 @@ function VisualSourcePicker({ reminder, onUpdate, onAttachImage }) {
             onPress={() => {
               if (type === "image") {
                 onAttachImage();
+                return;
               }
               onUpdate({ visualType: type });
             }}
@@ -790,260 +967,6 @@ function VisualSourcePicker({ reminder, onUpdate, onAttachImage }) {
           ))}
         </View>
       ) : null}
-    </View>
-  );
-}
-
-function TimeDialog({ visible, value, onConfirm, onDismiss }) {
-  const baseDate = parseISO(value);
-  const [hour, setHour] = useState(format(baseDate, "HH"));
-  const [minute, setMinute] = useState(format(baseDate, "mm"));
-  const [clockMode, setClockMode] = useState(false);
-  const [nativeTimeOpen, setNativeTimeOpen] = useState(false);
-  const apply = () => {
-    const next = set(baseDate, {
-      hours: clampNumber(hour, 0, 23),
-      minutes: clampNumber(minute, 0, 59),
-      seconds: 0,
-      milliseconds: 0
-    });
-    onConfirm(next);
-    onDismiss();
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
-      <BlurLayer>
-        <View style={styles.timeDialog}>
-          <Text style={styles.dialogLabel}>Enter time</Text>
-          {clockMode ? (
-            <ClockPicker hour={hour} minute={minute} onHour={setHour} onMinute={setMinute} />
-          ) : (
-            <>
-              <View style={styles.timeInputs}>
-                <TextInput
-                  mode="outlined"
-                  value={hour}
-                  onChangeText={(text) => setHour(text.replace(/\D/g, "").slice(0, 2))}
-                  keyboardType="number-pad"
-                  outlineColor={PURPLE}
-                  activeOutlineColor={PURPLE}
-                  style={styles.timeInput}
-                  textColor={PURPLE}
-                />
-                <Text style={styles.colon}>:</Text>
-                <TextInput
-                  mode="outlined"
-                  value={minute}
-                  onChangeText={(text) => setMinute(text.replace(/\D/g, "").slice(0, 2))}
-                  keyboardType="number-pad"
-                  outlineColor="#E6E0E8"
-                  activeOutlineColor={PURPLE}
-                  style={styles.timeInput}
-                  textColor={TEXT}
-                />
-              </View>
-              <View style={styles.timeLabels}>
-                <Text style={styles.inputHelp}>Hour</Text>
-                <Text style={styles.inputHelp}>Minute</Text>
-              </View>
-            </>
-          )}
-          <View style={styles.dialogActions}>
-            <View style={styles.dialogIconGroup}>
-              <Pressable style={styles.dialogIconButton} onPress={() => setClockMode((value) => !value)}>
-                <MaterialCommunityIcons name={clockMode ? "keyboard-outline" : "clock"} size={28} color="#56515E" />
-              </Pressable>
-              <Pressable style={styles.dialogIconButton} onPress={() => setNativeTimeOpen(true)}>
-                <MaterialCommunityIcons name="cellphone-cog" size={24} color="#56515E" />
-              </Pressable>
-            </View>
-            <View style={styles.dialogButtonRow}>
-              <Button textColor={PURPLE} onPress={onDismiss}>
-                Cancel
-              </Button>
-              <Button textColor={PURPLE} onPress={apply}>
-                OK
-              </Button>
-            </View>
-          </View>
-          {nativeTimeOpen ? (
-            <DateTimePicker
-              value={set(baseDate, { hours: clampNumber(hour, 0, 23), minutes: clampNumber(minute, 0, 59) })}
-              mode="time"
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={(event, selectedDate) => {
-                setNativeTimeOpen(Platform.OS === "ios");
-                if (selectedDate) {
-                  setHour(format(selectedDate, "HH"));
-                  setMinute(format(selectedDate, "mm"));
-                }
-              }}
-            />
-          ) : null}
-        </View>
-      </BlurLayer>
-    </Modal>
-  );
-}
-
-function DateDialog({ visible, value, hasDate, repeat, onConfirm, onDismiss }) {
-  const initialDate = parseISO(value);
-  const [selected, setSelected] = useState(format(initialDate, "yyyy-MM-dd"));
-  const [dateText, setDateText] = useState(hasDate ? format(initialDate, DATE_DISPLAY_FORMAT) : "");
-  const [calendarOpen, setCalendarOpen] = useState(false);
-  const [repeatEnabled, setRepeatEnabled] = useState(repeat);
-  const [nativeDateOpen, setNativeDateOpen] = useState(false);
-  const apply = () => {
-    const current = parseISO(value);
-    const day = parseDateInput(dateText) || parseISO(selected);
-    const next = set(day, {
-      hours: current.getHours(),
-      minutes: current.getMinutes(),
-      seconds: 0,
-      milliseconds: 0
-    });
-    onConfirm(next, repeatEnabled);
-    onDismiss();
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
-      <BlurLayer>
-        <View style={styles.dateDialog}>
-          <Text style={styles.dateDialogTitle}>Select date</Text>
-          <View style={styles.dateHeader}>
-            <TextInput
-              label="Enter date"
-              value={dateText}
-              onChangeText={setDateText}
-              placeholder={DATE_INPUT_PLACEHOLDER}
-              mode="outlined"
-              dense
-              style={styles.dateTextInput}
-            />
-            <Pressable
-              style={styles.dialogIconButton}
-              onPress={() => setCalendarOpen((value) => !value)}
-            >
-              <MaterialCommunityIcons name="calendar" size={28} color="#56515E" />
-            </Pressable>
-            <Pressable
-              style={styles.dialogIconButton}
-              onPress={() => setNativeDateOpen(true)}
-            >
-              <MaterialCommunityIcons name="cellphone-cog" size={24} color="#56515E" />
-            </Pressable>
-          </View>
-          <Divider />
-          {calendarOpen ? <View style={styles.dialogCalendar}>
-            <Calendar
-              current={selected}
-              markedDates={{
-                [selected]: { selected: true, selectedColor: PURPLE }
-              }}
-              onDayPress={(day) => {
-                setSelected(day.dateString);
-                setDateText(day.dateString.replaceAll("-", "/"));
-                setCalendarOpen(false);
-              }}
-              theme={{
-                calendarBackground: "#EEE8F0",
-                selectedDayBackgroundColor: PURPLE,
-                todayTextColor: PURPLE,
-                arrowColor: PURPLE,
-                textDayFontSize: 12,
-                textMonthFontSize: 14,
-                textDayHeaderFontSize: 11
-              }}
-            />
-          </View> : null}
-          <View style={styles.dateActions}>
-            <Text style={styles.repeatText}>Repeat</Text>
-            <Switch value={repeatEnabled} color={PURPLE} onValueChange={setRepeatEnabled} />
-            <Button textColor={PURPLE} onPress={onDismiss}>
-              Cancel
-            </Button>
-            <Button textColor={PURPLE} onPress={apply}>
-              OK
-            </Button>
-          </View>
-          {nativeDateOpen ? (
-            <DateTimePicker
-              value={parseDateInput(dateText) || parseISO(selected)}
-              mode="date"
-              display={Platform.OS === "ios" ? "inline" : "default"}
-              onChange={(event, selectedDate) => {
-                setNativeDateOpen(Platform.OS === "ios");
-                if (selectedDate) {
-                  const valueText = format(selectedDate, DATE_DISPLAY_FORMAT);
-                  setSelected(format(selectedDate, "yyyy-MM-dd"));
-                  setDateText(valueText);
-                }
-              }}
-            />
-          ) : null}
-        </View>
-      </BlurLayer>
-    </Modal>
-  );
-}
-
-function ClockPicker({ hour, minute, onHour, onMinute }) {
-  const hours = Array.from({ length: 12 }, (_, index) => `${index + 1}`);
-  const minutes = Array.from({ length: 12 }, (_, index) => `${index * 5}`.padStart(2, "0"));
-  const [step, setStep] = useState("hour");
-  const selectedHour12 = String(((clampNumber(hour, 0, 23) + 11) % 12) + 1);
-  const values = step === "hour" ? hours : minutes;
-  const selectedValue = step === "hour" ? selectedHour12 : minute.padStart(2, "0");
-
-  return (
-    <View style={styles.clockPicker}>
-      <Text style={styles.clockStepLabel}>{step === "hour" ? "Select hour" : "Select minute"}</Text>
-      <View style={styles.clockReadout}>
-        <Pressable style={[styles.clockReadoutSegment, step === "hour" && styles.clockReadoutSegmentActive]} onPress={() => setStep("hour")}>
-          <Text style={[styles.clockReadoutText, step === "hour" && styles.clockReadoutTextActive]}>{hour.padStart(2, "0")}</Text>
-        </Pressable>
-        <Text style={styles.clockReadoutColon}>:</Text>
-        <Pressable style={[styles.clockReadoutSegment, step === "minute" && styles.clockReadoutSegmentActive]} onPress={() => setStep("minute")}>
-          <Text style={[styles.clockReadoutText, step === "minute" && styles.clockReadoutTextActive]}>{minute.padStart(2, "0")}</Text>
-        </Pressable>
-      </View>
-      <Animatable.View key={step} animation="fadeIn" duration={160} style={styles.clockFace} useNativeDriver>
-        <View style={styles.clockHand} />
-        <View style={styles.clockCenter} />
-        {values.map((item, index) => {
-          const angle = (index + 1) * 30 - 90;
-          const radius = 78;
-          const left = 92 + Math.cos((angle * Math.PI) / 180) * radius - 18;
-          const top = 92 + Math.sin((angle * Math.PI) / 180) * radius - 18;
-          return (
-          <Pressable
-            key={item}
-            style={[styles.clockNumber, { left, top }, selectedValue === item.padStart(2, "0") && styles.clockNumberActive]}
-            onPress={() => {
-              if (step === "hour") {
-                onHour(item.padStart(2, "0"));
-                setStep("minute");
-              } else {
-                onMinute(item.padStart(2, "0"));
-              }
-            }}
-          >
-            <Text style={[styles.clockNumberText, selectedValue === item.padStart(2, "0") && styles.clockNumberTextActive]}>{item}</Text>
-          </Pressable>
-          );
-        })}
-      </Animatable.View>
-    </View>
-  );
-}
-
-function BlurLayer({ children }) {
-  return (
-    <View style={styles.modalLayer}>
-      <View style={styles.blurOverlay} />
-      {children}
     </View>
   );
 }
@@ -1167,10 +1090,12 @@ function getReminderNotificationTrigger(reminder) {
   if (fireDate <= new Date()) {
     return null;
   }
+  const seconds = Math.max(1, Math.ceil((fireDate.getTime() - Date.now()) / 1000));
 
   return {
-    type: Notifications.SchedulableTriggerInputTypes.DATE,
-    date: fireDate,
+    type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+    seconds,
+    repeats: false,
     channelId: REMINDER_CHANNEL_ID
   };
 }
@@ -1205,19 +1130,13 @@ function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, parsed));
 }
 
-function parseDateInput(value) {
-  const normalized = value.trim().replaceAll("-", "/");
-  if (!normalized) {
-    return null;
-  }
-  const parsed = parse(normalized, "yyyy/MM/dd", new Date());
-  return isValid(parsed) ? parsed : null;
-}
-
 const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: SURFACE,
     flex: 1
+  },
+  safeAreaDark: {
+    backgroundColor: "#141218"
   },
   flex: {
     flex: 1
@@ -1226,6 +1145,9 @@ const styles = StyleSheet.create({
     backgroundColor: BG,
     flex: 1,
     paddingBottom: 78
+  },
+  screenDark: {
+    backgroundColor: "#141218"
   },
   titleWrap: {
     alignItems: "center",
@@ -1376,6 +1298,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     overflow: "hidden",
     padding: 14
+  },
+  materialCardDark: {
+    backgroundColor: "#211F26",
+    borderColor: "#49454F"
   },
   scheduleContent: {
     padding: 16,
@@ -1577,6 +1503,7 @@ const styles = StyleSheet.create({
     textAlignVertical: "center"
   },
   visualPicker: {
+    alignItems: "center",
     borderColor: LINE,
     borderRadius: 16,
     borderWidth: 1,
@@ -1587,7 +1514,8 @@ const styles = StyleSheet.create({
   },
   visualTabs: {
     flexDirection: "row",
-    gap: 8
+    gap: 8,
+    width: "100%"
   },
   visualTab: {
     alignItems: "center",
@@ -1614,9 +1542,12 @@ const styles = StyleSheet.create({
     color: "#FFFFFF"
   },
   choiceGrid: {
+    alignItems: "center",
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8
+    gap: 8,
+    justifyContent: "center",
+    width: "100%"
   },
   visualChoice: {
     alignItems: "center",
@@ -1806,6 +1737,46 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     overflow: "hidden"
   },
+  settingsPanel: {
+    backgroundColor: SURFACE,
+    borderColor: LINE,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 16
+  },
+  segmentedControl: {
+    backgroundColor: SURFACE_VARIANT,
+    borderRadius: 22,
+    flexDirection: "row",
+    padding: 4
+  },
+  segmentButton: {
+    alignItems: "center",
+    borderRadius: 18,
+    flex: 1,
+    minHeight: 36,
+    justifyContent: "center"
+  },
+  segmentButtonActive: {
+    backgroundColor: PURPLE
+  },
+  segmentText: {
+    color: MUTED,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  segmentTextActive: {
+    color: "#FFFFFF"
+  },
+  settingsSwitchRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between"
+  },
   settingsRow: {
     flexDirection: "row",
     gap: 16,
@@ -1841,6 +1812,10 @@ const styles = StyleSheet.create({
     left: 0,
     position: "absolute",
     right: 0
+  },
+  bottomNavDark: {
+    backgroundColor: "#211F26",
+    borderTopColor: "#49454F"
   },
   navItem: {
     alignItems: "center",

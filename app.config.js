@@ -1,4 +1,5 @@
 const appJson = require("./app.json");
+require("dotenv").config();
 
 module.exports = {
   ...appJson.expo,
@@ -9,6 +10,9 @@ module.exports = {
     firebaseProjectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || appJson.expo.extra.firebaseProjectId,
     firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || appJson.expo.extra.firebaseStorageBucket,
     firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || appJson.expo.extra.firebaseMessagingSenderId,
-    firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || appJson.expo.extra.firebaseAppId
+    firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || appJson.expo.extra.firebaseAppId,
+    "eas": {
+        "projectId": "a2ba39a0-1bc0-4653-b90a-501239ec5cb4"
+      }
   }
 };

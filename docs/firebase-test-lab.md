@@ -20,13 +20,19 @@ build/vizminder-a4.apk
 npm run test:firebase-lab
 ```
 
-This runs a Firebase Test Lab Robo test on a Pixel 2 Android 11 profile:
+This runs a Firebase Test Lab Robo test on a current virtual Android phone profile:
 
 ```bash
 gcloud firebase test android run \
   --type robo \
   --app ./build/vizminder-a4.apk \
-  --device model=Pixel2,version=30,locale=en,orientation=portrait
+  --device model=MediumPhone.arm,version=35,locale=en,orientation=portrait
+```
+
+If Google changes the device catalog, run this first and replace the model/version with an available pair:
+
+```bash
+gcloud firebase test android models list
 ```
 
 ## Evidence To Capture

@@ -13,7 +13,7 @@ import {
 function normalizeReminder(reminder) {
   return {
     visualType: reminder.visualType || (reminder.imageUri ? "image" : "icon"),
-    emoji: reminder.emoji || "🔔",
+    emoji: reminder.emoji || "\u{1F514}",
     icon: reminder.icon || "bell-outline",
     description: reminder.description || "",
     timeSet: reminder.timeSet !== false,

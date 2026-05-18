@@ -42,6 +42,7 @@ export async function scheduleReminder(reminder) {
   if (date <= new Date()) {
     return null;
   }
+  const seconds = Math.max(1, Math.ceil((date.getTime() - Date.now()) / 1000));
   return Notifications.scheduleNotificationAsync({
     content: {
       title: `VizMinder: ${reminder.title}`,
@@ -51,8 +52,9 @@ export async function scheduleReminder(reminder) {
       data: { reminderId: reminder.id }
     },
     trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date,
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds,
+      repeats: false,
       channelId: REMINDER_CHANNEL_ID
     }
   });

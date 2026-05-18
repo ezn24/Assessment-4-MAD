@@ -22,6 +22,14 @@ export function isFirebaseConfigured() {
   return Boolean(getConfig());
 }
 
+export function getFirebaseDebugInfo() {
+  const config = getConfig();
+  if (!config) {
+    return { configured: false, projectId: "" };
+  }
+  return { configured: true, projectId: config.projectId };
+}
+
 export function getFirebaseServices() {
   const config = getConfig();
   if (!config) {

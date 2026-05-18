@@ -10,13 +10,14 @@
     "test": "jest",
     "export:android": "expo export --platform android --output-dir .expo-export-check",
     "build:apk": "eas build --platform android --profile preview",
-    "test:firebase-lab": "gcloud firebase test android run --type robo --app ./build/vizminder-a4.apk --device model=Pixel2,version=30,locale=en,orientation=portrait"
+    "test:firebase-lab": "gcloud firebase test android run --type robo --app ./build/vizminder-a4.apk --device model=MediumPhone.arm,version=35,locale=en,orientation=portrait"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "^9.1.0",
     "date-fns": "^4.2.1",
+    "dotenv": "^17.4.2",
     "expo": "^55.0.24",
     "expo-background-task": "^55.0.18",
     "expo-battery": "^55.0.13",
