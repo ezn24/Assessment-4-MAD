@@ -28,6 +28,7 @@ import { Calendar } from "react-native-calendars";
 import { Button, Divider, Snackbar, Switch, Text, TextInput } from "react-native-paper";
 import { useReminders } from "../hooks/useReminders";
 import { getFirebaseDebugInfo } from "../services/firebase";
+import { cancelNativeAlarm, scheduleNativeAlarm } from "../services/nativeAlarm";
 
 const PURPLE = "#4F378B";
 const LIGHT_PURPLE = "#EADDFF";
@@ -200,6 +201,7 @@ export default function HomeScreen() {
     if (reminder.notificationId) {
       Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
     }
+    cancelNativeAlarm(reminder.id).catch(() => {});
     completeReminder(reminder.id);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     if (reminder.important) {
@@ -276,6 +278,7 @@ export default function HomeScreen() {
                   description: editing.description.trim()
                 };
                 const notificationId = await scheduleReminderNotification(reminder);
+                await scheduleNativeAlarm(reminder).catch(() => false);
                 addReminder({ ...reminder, notificationId });
                 setMessage(notificationId ? "Reminder saved and notification scheduled." : "Reminder saved. Notification permission is needed for alerts.");
               } else {
@@ -283,6 +286,7 @@ export default function HomeScreen() {
                   await Notifications.cancelScheduledNotificationAsync(editing.notificationId).catch(() => {});
                 }
                 const notificationId = await scheduleReminderNotification(editing);
+                await scheduleNativeAlarm({ ...editing, notificationId }).catch(() => false);
                 updateReminder(editing.id, {
                   ...editing,
                   title: editing.title.trim(),
@@ -300,6 +304,7 @@ export default function HomeScreen() {
                     if (editing.notificationId) {
                       Notifications.cancelScheduledNotificationAsync(editing.notificationId).catch(() => {});
                     }
+                    cancelNativeAlarm(editing.id).catch(() => {});
                     deleteReminder(editing.id);
                     setEditing(null);
                     setMessage("Reminder deleted.");
@@ -327,7 +332,11 @@ export default function HomeScreen() {
                       if (reminder.notificationId) {
                         await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
                       }
+                      await cancelNativeAlarm(reminder.id).catch(() => false);
                       const notificationId = completed ? null : await scheduleReminderNotification({ ...reminder, completed: false });
+                      if (!completed) {
+                        await scheduleNativeAlarm({ ...reminder, completed: false }).catch(() => false);
+                      }
                       if (completed && reminder.important) {
                         setCelebrating(true);
                         requestAnimationFrame(() => confettiRef.current?.start());
@@ -347,6 +356,7 @@ export default function HomeScreen() {
                     if (reminder.notificationId) {
                       Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
                     }
+                    cancelNativeAlarm(reminder.id).catch(() => {});
                     deleteReminder(reminder.id);
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
                     setMessage("Reminder deleted.");

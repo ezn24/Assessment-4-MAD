@@ -8,10 +8,22 @@ VizMinder A4 is intended to be installed and tested as an APK, not run only thro
 npm run build:apk
 ```
 
-Download the generated APK from EAS and place it at:
+The local release APK is generated at:
+
+```text
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+Copy it to the Test Lab input path:
 
 ```text
 build/vizminder-a4.apk
+```
+
+If you still want to use EAS cloud build, run:
+
+```bash
+npm run build:apk:eas
 ```
 
 ## Run Firebase Test Lab Robo Test

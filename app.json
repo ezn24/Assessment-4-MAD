@@ -24,12 +24,14 @@
         "READ_MEDIA_IMAGES",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "POST_NOTIFICATIONS",
-        "SCHEDULE_EXACT_ALARM"
+      "POST_NOTIFICATIONS",
+      "SCHEDULE_EXACT_ALARM",
+      "USE_FULL_SCREEN_INTENT"
       ]
     },
     "plugins": [
       "expo-font",
+      "expo-system-ui",
       "expo-sqlite",
       "expo-location",
       "expo-notifications",
