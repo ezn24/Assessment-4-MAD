@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addMinutes, format, formatDistanceStrict, isSameDay, parseISO } from "date-fns";
-import { seedReminders } from "../data/seedReminders";
-import { deleteReminder as deleteStoredReminder, listReminders, seedIfEmpty, upsertReminder } from "../services/storage";
-import { getFirebaseServices, syncRemindersToFirestore } from "../services/firebase";
+import { clearReminders, deleteReminder as deleteStoredReminder, listReminders, seedIfEmpty, upsertReminder } from "../services/storage";
+import {
+  deleteReminderFromFirestore,
+  fetchRemindersFromFirestore,
+  getFirebaseServices,
+  saveReminderToFirestore,
+  signInGuest,
+  syncRemindersToFirestore
+} from "../services/firebase";
 
 function normalizeReminder(reminder) {
   return {
@@ -25,11 +31,29 @@ function normalizeReminder(reminder) {
   };
 }
 
-async function tryCloudSync(reminders) {
+function getCurrentFirebaseUserId() {
   const services = getFirebaseServices();
-  const userId = services?.auth?.currentUser?.uid;
+  return services?.auth?.currentUser?.uid || null;
+}
+
+async function tryCloudSync(reminders) {
+  const userId = getCurrentFirebaseUserId();
   if (userId) {
     await syncRemindersToFirestore(userId, reminders).catch(() => {});
+  }
+}
+
+async function tryCloudSave(reminder) {
+  const userId = getCurrentFirebaseUserId();
+  if (userId) {
+    await saveReminderToFirestore(userId, reminder).catch(() => {});
+  }
+}
+
+async function tryCloudDelete(reminderId) {
+  const userId = getCurrentFirebaseUserId();
+  if (userId) {
+    await deleteReminderFromFirestore(userId, reminderId).catch(() => {});
   }
 }
 
@@ -41,12 +65,21 @@ export function useReminders() {
   useEffect(() => {
     async function restore() {
       await seedIfEmpty();
-      const stored = await listReminders();
-      setReminders(stored.map(normalizeReminder));
+      const session = await signInGuest().catch(() => null);
+      const userId = session?.user?.uid;
+      const cloud = userId ? await fetchRemindersFromFirestore(userId).catch(() => []) : [];
+      if (cloud.length) {
+        const normalizedCloud = cloud.map(normalizeReminder);
+        await Promise.all(normalizedCloud.map(upsertReminder));
+        setReminders(normalizedCloud);
+      } else {
+        const stored = await listReminders();
+        setReminders(stored.map(normalizeReminder));
+      }
       setLoaded(true);
     }
     restore().catch(() => {
-      setReminders(seedReminders.map(normalizeReminder));
+      setReminders([]);
       setLoaded(true);
     });
   }, []);
@@ -69,6 +102,7 @@ export function useReminders() {
       const changed = next.find((item) => item.id === id);
       if (changed) {
         upsertReminder(changed).catch(() => {});
+        tryCloudSave(changed);
       }
       return next;
     });
@@ -80,6 +114,7 @@ export function useReminders() {
       const changed = next.find((item) => item.id === id);
       if (changed) {
         upsertReminder(changed).catch(() => {});
+        tryCloudSave(changed);
       }
       return next;
     });
@@ -91,6 +126,7 @@ export function useReminders() {
       const changed = next.find((item) => item.id === id);
       if (changed) {
         upsertReminder(changed).catch(() => {});
+        tryCloudSave(changed);
       }
       return next;
     });
@@ -99,6 +135,7 @@ export function useReminders() {
   const deleteReminder = useCallback((id) => {
     replaceReminderState((items) => items.filter((item) => item.id !== id));
     deleteStoredReminder(id).catch(() => {});
+    tryCloudDelete(id);
   }, [replaceReminderState]);
 
   const addReminder = useCallback((draft = {}) => {
@@ -120,13 +157,13 @@ export function useReminders() {
     });
     replaceReminderState((items) => [nextReminder, ...items]);
     upsertReminder(nextReminder).catch(() => {});
+    tryCloudSave(nextReminder);
     return nextReminder;
   }, [replaceReminderState]);
 
   const resetPrototype = useCallback(() => {
-    const next = seedReminders.map(normalizeReminder);
-    replaceReminderState(next);
-    Promise.all(next.map((item) => upsertReminder(item))).catch(() => {});
+    replaceReminderState([]);
+    clearReminders().catch(() => {});
   }, [replaceReminderState]);
 
   const visibleReminders = useMemo(

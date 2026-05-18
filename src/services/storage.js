@@ -69,48 +69,13 @@ export async function deleteReminder(id) {
   await db.runAsync("DELETE FROM reminders WHERE id = ?", [id]);
 }
 
+export async function clearReminders() {
+  const db = await getDatabase();
+  await db.runAsync("DELETE FROM reminders");
+}
+
 export async function seedIfEmpty() {
   const db = await getDatabase();
-  const result = await db.getFirstAsync("SELECT COUNT(*) AS count FROM reminders");
-  if (result?.count > 0) {
-    return;
-  }
-  const base = new Date();
-  const reminders = [
-    {
-      id: "medication",
-      title: "Take medication",
-      description: "Use the pill box photo before leaving.",
-      scheduledAt: new Date(base.getTime() + 20 * 60 * 1000).toISOString(),
-      visualType: "emoji",
-      emoji: "💊",
-      icon: "pill",
-      imageUri: null,
-      important: true,
-      completed: false,
-      latitude: null,
-      longitude: null,
-      locationLabel: "",
-      notificationId: null,
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: "bring-keys",
-      title: "Bring keys",
-      description: "Check the entry table visual cue.",
-      scheduledAt: new Date(base.getTime() + 55 * 60 * 1000).toISOString(),
-      visualType: "emoji",
-      emoji: "🔑",
-      icon: "key",
-      imageUri: null,
-      important: true,
-      completed: false,
-      latitude: null,
-      longitude: null,
-      locationLabel: "Home entrance",
-      notificationId: null,
-      updatedAt: new Date().toISOString()
-    }
-  ];
-  await Promise.all(reminders.map(upsertReminder));
+  // Assessment 4 starts with an empty task list. Remove legacy demo rows from earlier builds only.
+  await db.runAsync("DELETE FROM reminders WHERE id IN (?, ?)", ["medication", "bring-keys"]);
 }

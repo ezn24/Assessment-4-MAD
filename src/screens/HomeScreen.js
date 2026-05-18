@@ -6,7 +6,7 @@ import * as Animatable from "react-native-animatable";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 // expo-notifications schedules real local notifications when reminder time arrives.
-import * as Notifications from "expo-notifications-local";
+import * as Notifications from "expo-notifications";
 // Native date/time picker is kept as an escape hatch beside the custom Material-style picker.
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -350,6 +350,15 @@ function HomeTab({ reminders, markedDates, onTestReminder, onEdit, onToggle, onA
     <View style={styles.screen}>
       <ScreenTitle>Home</ScreenTitle>
       <ScrollView style={styles.flex} contentContainerStyle={styles.homeList}>
+        {!visibleReminders.length ? (
+          <View style={styles.emptyHome}>
+            <View style={styles.emptyVisual}>
+              <MaterialCommunityIcons name="bell-plus-outline" size={42} color={PURPLE} />
+            </View>
+            <Text style={styles.emptyTitle}>No reminders yet</Text>
+            <Text style={styles.emptyText}>Use the add button below to create your first visual reminder.</Text>
+          </View>
+        ) : null}
         {visibleReminders.map((reminder, index) => (
           <Animatable.View key={reminder.id} animation="fadeInUp" delay={index * 70} duration={320} useNativeDriver>
             {/* react-native-gesture-handler gives this list a native-feeling swipe delete gesture. */}
@@ -1338,6 +1347,26 @@ const styles = StyleSheet.create({
   homeList: {
     paddingBottom: 102,
     paddingTop: 4
+  },
+  emptyHome: {
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 36,
+    paddingTop: 96
+  },
+  emptyVisual: {
+    alignItems: "center",
+    backgroundColor: LIGHT_PURPLE,
+    borderRadius: 46,
+    height: 92,
+    justifyContent: "center",
+    width: 92
+  },
+  emptyTitle: {
+    color: TEXT,
+    fontSize: 24,
+    fontWeight: "700",
+    marginTop: 8
   },
   materialCard: {
     backgroundColor: SURFACE,

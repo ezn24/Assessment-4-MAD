@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import * as Notifications from "expo-notifications-local";
+import * as Notifications from "expo-notifications";
 
 export const REMINDER_CHANNEL_ID = "vizminder-a4-reminders";
 
@@ -16,10 +16,13 @@ export async function configureNotifications() {
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL_ID, {
       name: "VizMinder reminders",
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: Notifications.AndroidImportance.MAX,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       sound: "default",
-      vibrationPattern: [0, 350, 150, 350]
+      vibrationPattern: [0, 450, 200, 450],
+      audioAttributes: {
+        usage: Notifications.AndroidAudioUsage.ALARM
+      }
     });
   }
   const current = await Notifications.getPermissionsAsync();
@@ -44,6 +47,7 @@ export async function scheduleReminder(reminder) {
       title: `VizMinder: ${reminder.title}`,
       body: reminder.description || "Time to check your visual reminder.",
       sound: "default",
+      priority: Notifications.AndroidNotificationPriority.MAX,
       data: { reminderId: reminder.id }
     },
     trigger: {

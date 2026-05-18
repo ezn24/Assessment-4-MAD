@@ -1,7 +1,7 @@
 import Constants from "expo-constants";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInAnonymously, signOut } from "firebase/auth";
-import { collection, doc, getDocs, getFirestore, setDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, getFirestore, setDoc } from "firebase/firestore";
 
 function getConfig() {
   const extra = Constants.expoConfig?.extra || {};
@@ -60,6 +60,24 @@ export async function syncRemindersToFirestore(userId, reminders) {
     reminders.map((reminder) => setDoc(doc(services.db, "users", userId, "reminders", reminder.id), reminder))
   );
   return { synced: reminders.length };
+}
+
+export async function saveReminderToFirestore(userId, reminder) {
+  const services = getFirebaseServices();
+  if (!services || !userId || userId === "offline-user") {
+    return { skipped: true };
+  }
+  await setDoc(doc(services.db, "users", userId, "reminders", reminder.id), reminder);
+  return { saved: true };
+}
+
+export async function deleteReminderFromFirestore(userId, reminderId) {
+  const services = getFirebaseServices();
+  if (!services || !userId || userId === "offline-user") {
+    return { skipped: true };
+  }
+  await deleteDoc(doc(services.db, "users", userId, "reminders", reminderId));
+  return { deleted: true };
 }
 
 export async function fetchRemindersFromFirestore(userId) {

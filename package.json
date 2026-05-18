@@ -8,8 +8,9 @@
     "android": "set __UNSAFE_EXPO_HOME_DIRECTORY=.expo-cache&& expo start --android",
     "web": "set __UNSAFE_EXPO_HOME_DIRECTORY=.expo-cache&& expo start --web",
     "test": "jest",
-    "postinstall": "node scripts/create-local-notifications-wrapper.js",
-    "export:android": "expo export --platform android --output-dir .expo-export-check"
+    "export:android": "expo export --platform android --output-dir .expo-export-check",
+    "build:apk": "eas build --platform android --profile preview",
+    "test:firebase-lab": "gcloud firebase test android run --type robo --app ./build/vizminder-a4.apk --device model=Pixel2,version=30,locale=en,orientation=portrait"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
