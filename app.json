@@ -29,11 +29,13 @@
       ]
     },
     "plugins": [
+      "expo-font",
       "expo-sqlite",
       "expo-location",
       "expo-notifications",
       "expo-image-picker",
-      "expo-background-task"
+      "expo-background-task",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "firebaseApiKey": "",

@@ -15,12 +15,14 @@ fs.writeFileSync(
   path.join(packageDir, "index.js"),
   `export { scheduleNotificationAsync } from "../expo-notifications/build/scheduleNotificationAsync.js";
 export { cancelScheduledNotificationAsync } from "../expo-notifications/build/cancelScheduledNotificationAsync.js";
+export { cancelAllScheduledNotificationsAsync } from "../expo-notifications/build/cancelAllScheduledNotificationsAsync.js";
 export { setNotificationChannelAsync } from "../expo-notifications/build/setNotificationChannelAsync.js";
 export { requestPermissionsAsync, getPermissionsAsync } from "../expo-notifications/build/NotificationPermissions.js";
 export { addNotificationReceivedListener, addNotificationResponseReceivedListener } from "../expo-notifications/build/NotificationsEmitter.js";
 export { setNotificationHandler } from "../expo-notifications/build/NotificationsHandler.js";
 export { AndroidNotificationPriority, SchedulableTriggerInputTypes } from "../expo-notifications/build/Notifications.types.js";
 export {
+  AndroidAudioUsage,
   AndroidImportance,
   AndroidNotificationVisibility
 } from "../expo-notifications/build/NotificationChannelManager.types.js";
