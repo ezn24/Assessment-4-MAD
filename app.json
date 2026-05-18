@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "VizMinder A4",
+    "slug": "vizminder-a4",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "vizminder",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "VizMinder uses photos as visual reminder cues.",
+        "NSPhotoLibraryUsageDescription": "VizMinder lets users choose reminder images.",
+        "NSLocationWhenInUseUsageDescription": "VizMinder uses location to support context-aware reminders."
+      }
+    },
+    "android": {
+      "package": "com.ezn24.vizmindera4",
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM"
+      ]
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-location",
+      "expo-notifications",
+      "expo-image-picker",
+      "expo-background-task"
+    ],
+    "extra": {
+      "firebaseApiKey": "",
+      "firebaseAuthDomain": "",
+      "firebaseProjectId": "",
+      "firebaseStorageBucket": "",
+      "firebaseMessagingSenderId": "",
+      "firebaseAppId": ""
+    }
+  }
+}
