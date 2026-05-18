@@ -1,12 +1,14 @@
 # VizMinder A4
 
-VizMinder A4 is an Android-focused React Native / Expo application for context-aware visual reminders. It expands the Assessment 3 prototype into a fuller mobile app aligned with Assessment 4 requirements: Firebase, SQLite, device capabilities, notifications, background work, testing, and build readiness.
+VizMinder A4 is an Android-focused React Native / Expo application for context-aware visual reminders. It carries forward the visual design language from `VizMinder-MAD`: a soft Material-inspired interface, visual-first reminder rows, bottom search/add dock, pill-style bottom navigation, and a low-friction full-screen Yes/No reminder prompt.
+
+This version is built as an Assessment 4 app foundation rather than a throwaway prototype. It keeps the VizMinder interaction model while adding the required mobile development technologies: Firebase, SQLite, device capabilities, notifications, background work, testing, and build readiness.
 
 ## Implemented Requirements
 
 | A4 requirement | Implementation |
 | --- | --- |
-| Functional screens and navigation | Home, Schedule, Map, Settings, Add/Edit, and Reminder Prompt screens with bottom navigation and data passing through selected reminder objects. |
+| Functional screens and navigation | Home, Schedule, Map, Account, Settings, Add/Edit, and Reminder Prompt screens with VizMinder-style bottom navigation and data passing through selected reminder objects. |
 | Firebase Authentication | Anonymous sign-in service in `src/services/firebase.js`; falls back to offline demo mode when credentials are not configured. |
 | Firebase Firestore | Reminder sync service writes user reminders to `users/{uid}/reminders`; disabled safely without credentials. |
 | Firebase Test Lab | Project is prepared for APK/build testing; Test Lab evidence should be captured after building an APK. |
