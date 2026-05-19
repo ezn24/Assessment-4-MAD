@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -137,8 +137,8 @@ function createDraftReminder() {
   };
 }
 
-export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, onUpdateSettings }) {
-  const { reminders, markedDates, updateReminder, addReminder, deleteReminder, resetPrototype } = useReminders();
+export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, onUpdateSettings, isDarkOverride = false, themeColors = {} }) {
+  const { reminders, markedDates, updateReminder, addReminder, deleteReminder, resetPrototype, loaded } = useReminders();
   const systemScheme = useColorScheme();
   const confettiRef = useRef(null);
   const remindersRef = useRef(reminders);
@@ -150,7 +150,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const [celebrating, setCelebrating] = useState(false);
   const settings = { ...DEFAULT_SETTINGS, ...appSettings };
   const activeScheme = settings.themeMode === "system" ? systemScheme : settings.themeMode;
-  const isDark = activeScheme === "dark";
+  const isDark = isDarkOverride || activeScheme === "dark";
+  const themedSurface = themeColors.surface || (isDark ? "#141218" : SURFACE);
 
   const firstReminder = reminders[0];
   const activeReminder = reminding || firstReminder;
@@ -246,7 +247,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, isDark && styles.safeAreaDark]}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: themedSurface }, isDark && styles.safeAreaDark]}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -341,10 +342,12 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
               {tab === "home" ? (
                 <HomeTab
                   reminders={reminders}
+                  loaded={loaded}
                   markedDates={markedDates}
                   onTestReminder={setReminding}
                   showReminderDebugButton={settings.showReminderDebugButton}
                   isDark={isDark}
+                  themeColors={themeColors}
                   onEdit={(reminder) => {
                     setEditMode("edit");
                     setEditing({ ...reminder });
@@ -437,21 +440,30 @@ function ScreenTitle({ children, action, isDark = false }) {
   );
 }
 
-function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButton, isDark, onEdit, onToggle, onAdd, onDelete }) {
+function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, onEdit, onToggle, onAdd, onDelete }) {
   const [query, setQuery] = useState("");
+  const primary = themeColors.primary || PURPLE;
   const visibleReminders = reminders.filter((reminder) => {
     const haystack = `${reminder.title} ${reminder.description || ""}`.toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
   });
 
   return (
-    <View style={[styles.screen, isDark && styles.screenDark]}>
+    <View style={[styles.screen, { backgroundColor: themeColors.background || (isDark ? "#141218" : BG) }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Home</ScreenTitle>
       <ScrollView style={styles.flex} contentContainerStyle={styles.homeList}>
-        {!visibleReminders.length ? (
+        {!loaded ? (
           <View style={styles.emptyHome}>
             <View style={styles.emptyVisual}>
-              <MaterialCommunityIcons name="bell-plus-outline" size={42} color={PURPLE} />
+              <MaterialCommunityIcons name="database-clock-outline" size={42} color={primary} />
+            </View>
+            <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>Loading reminders</Text>
+            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Restoring local data first.</Text>
+          </View>
+        ) : !visibleReminders.length ? (
+          <View style={styles.emptyHome}>
+            <View style={styles.emptyVisual}>
+              <MaterialCommunityIcons name="bell-plus-outline" size={42} color={primary} />
             </View>
             <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>No reminders yet</Text>
             <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Use the add button below to create your first visual reminder.</Text>
@@ -473,8 +485,8 @@ function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButt
                 <VisualCue reminder={reminder} size={44} iconSize={22} compact />
               </View>
               <View style={styles.taskCopy}>
-                <Text style={styles.taskTime}>
-                  {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
+                <Text style={[styles.taskTime, { color: primary }]}>
+                  {format(parseISO(reminder.scheduledAt), "h:mm a")} - {getCountdownLabel(reminder.scheduledAt)}
                 </Text>
                 <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
                 {reminder.description ? <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>{reminder.description}</Text> : null}
@@ -482,10 +494,10 @@ function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButt
               <View style={styles.taskActions}>
               {showReminderDebugButton ? (
                 <Pressable style={styles.testButton} onPress={() => onTestReminder(reminder)}>
-                  <MaterialCommunityIcons name="play-circle-outline" size={22} color={PURPLE} />
+                  <MaterialCommunityIcons name="play-circle-outline" size={22} color={primary} />
                 </Pressable>
               ) : null}
-                <Switch value={!reminder.completed} color={PURPLE} onValueChange={(value) => onToggle(reminder, !value)} />
+                <Switch value={!reminder.completed} color={primary} onValueChange={(value) => onToggle(reminder, !value)} />
               </View>
             </Pressable>
             </Swipeable>
@@ -507,7 +519,7 @@ function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButt
           textColor={isDark ? "#E6E0E9" : TEXT}
           placeholderTextColor={isDark ? "#CAC4D0" : MUTED}
         />
-        <Pressable style={styles.addButton} onPress={onAdd}>
+        <Pressable style={[styles.addButton, { backgroundColor: primary }]} onPress={onAdd}>
           <MaterialCommunityIcons name="plus" size={26} color="#FFFFFF" />
         </Pressable>
       </View>
@@ -559,7 +571,7 @@ function ScheduleTab({ markedDates, reminders, isDark, onEdit }) {
                 <View style={styles.scheduleCopy}>
                   <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
                   <Text style={styles.taskTime}>
-                    {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
+                    {format(parseISO(reminder.scheduledAt), "h:mm a")} - {getCountdownLabel(reminder.scheduledAt)}
                   </Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={MUTED} />
@@ -2305,3 +2317,4 @@ const styles = StyleSheet.create({
     lineHeight: 18
   }
 });
+

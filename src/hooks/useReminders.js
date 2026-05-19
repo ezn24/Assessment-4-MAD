@@ -64,25 +64,33 @@ export function useReminders() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     async function restore() {
       await seedIfEmpty();
+      const stored = (await listReminders()).map(normalizeReminder);
+      if (!cancelled) {
+        setReminders(stored);
+        setLoaded(true);
+      }
+
       const session = await signInGuest().catch(() => null);
       const userId = session?.user?.uid;
       const cloud = userId ? await fetchRemindersFromFirestore(userId).catch(() => []) : [];
       if (cloud.length) {
-        const normalizedCloud = cloud.map(normalizeReminder);
-        await Promise.all(normalizedCloud.map(upsertReminder));
-        setReminders(normalizedCloud);
-      } else {
-        const stored = await listReminders();
-        setReminders(stored.map(normalizeReminder));
+        const merged = mergeReminders(stored, cloud.map(normalizeReminder));
+        await Promise.all(merged.map(upsertReminder));
+        if (!cancelled) {
+          setReminders(merged);
+        }
       }
-      setLoaded(true);
     }
     restore().catch(() => {
       setReminders([]);
       setLoaded(true);
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const replaceReminderState = useCallback((updater) => {
@@ -214,4 +222,15 @@ export function useReminders() {
     getCountdown,
     loaded
   };
+}
+
+function mergeReminders(localReminders, cloudReminders) {
+  const byId = new Map();
+  [...localReminders, ...cloudReminders].forEach((reminder) => {
+    const current = byId.get(reminder.id);
+    if (!current || new Date(reminder.updatedAt || 0) >= new Date(current.updatedAt || 0)) {
+      byId.set(reminder.id, reminder);
+    }
+  });
+  return Array.from(byId.values()).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
 }

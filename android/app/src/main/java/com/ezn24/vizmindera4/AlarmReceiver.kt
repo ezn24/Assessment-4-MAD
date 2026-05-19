@@ -7,7 +7,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.media.AudioAttributes
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import java.util.Calendar
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -26,7 +29,10 @@ class AlarmReceiver : BroadcastReceiver() {
     ensureChannel(context)
 
     val alarmIntent = Intent(context, AlarmActivity::class.java).apply {
-      flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+      flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+        Intent.FLAG_ACTIVITY_NO_USER_ACTION
       putExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID, reminderId)
       putExtra(AlarmSchedulerModule.EXTRA_TITLE, title)
       putExtra(AlarmSchedulerModule.EXTRA_BODY, body)
@@ -53,12 +59,14 @@ class AlarmReceiver : BroadcastReceiver() {
       .setOngoing(true)
       .setAutoCancel(false)
       .setColor(Color.rgb(79, 55, 139))
-      .setSilent(true)
+      .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+      .setSound(Settings.System.DEFAULT_ALARM_ALERT_URI)
       .setFullScreenIntent(fullScreenIntent, true)
       .setContentIntent(fullScreenIntent)
       .build()
 
     NotificationManagerCompat.from(context).notify(reminderId.hashCode(), notification)
+    wakeForAlarm(context)
     context.startActivity(alarmIntent)
     if (repeatDaily) {
       scheduleNextDailyAlarm(context, reminderId, title, body, ringtone, visualType, emoji)
@@ -118,13 +126,29 @@ class AlarmReceiver : BroadcastReceiver() {
       setBypassDnd(true)
       enableVibration(true)
       vibrationPattern = longArrayOf(0, 450, 200, 450)
-      setSound(null, null)
+      setSound(
+        Settings.System.DEFAULT_ALARM_ALERT_URI,
+        AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_ALARM)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .build()
+      )
     }
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.createNotificationChannel(channel)
   }
 
   companion object {
-    const val CHANNEL_ID = "vizminder-native-alarms-v2"
+    const val CHANNEL_ID = "vizminder-native-alarms-v5"
+  }
+
+  private fun wakeForAlarm(context: Context) {
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    @Suppress("DEPRECATION")
+    val wakeLock = powerManager.newWakeLock(
+      PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+      "VizMinder:AlarmWakeLock"
+    )
+    wakeLock.acquire(10_000L)
   }
 }

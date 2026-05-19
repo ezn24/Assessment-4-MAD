@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useColorScheme } from "react-native";
+import { Appearance } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMaterial3Theme } from "@pchmn/expo-material3-theme";
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from "react-native-paper";
@@ -16,9 +16,9 @@ const DEFAULT_SETTINGS = {
 };
 
 export default function App() {
-  const scheme = useColorScheme();
+  const [systemScheme, setSystemScheme] = useState(Appearance.getColorScheme() || "light");
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const activeScheme = settings.themeMode === "system" ? scheme : settings.themeMode;
+  const activeScheme = settings.themeMode === "system" ? systemScheme : settings.themeMode;
   const isDark = activeScheme === "dark";
   const { theme: materialTheme } = useMaterial3Theme({ fallbackSourceColor: "#6750A4" });
 
@@ -30,6 +30,13 @@ export default function App() {
         }
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      setSystemScheme(colorScheme || "light");
+    });
+    return () => subscription.remove();
   }, []);
 
   const updateSettings = (patch) => {
@@ -58,9 +65,9 @@ export default function App() {
   return (
     // react-native-gesture-handler needs a native root view before Swipeable rows can work reliably.
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <PaperProvider theme={paperTheme}>
+      <PaperProvider key={`${activeScheme}-${settings.followSystemColors ? "dynamic" : "static"}`} theme={paperTheme}>
         <StatusBar style={isDark ? "light" : "dark"} />
-        <HomeScreen settings={settings} onUpdateSettings={updateSettings} />
+        <HomeScreen settings={settings} onUpdateSettings={updateSettings} isDarkOverride={isDark} themeColors={paperTheme.colors} />
       </PaperProvider>
     </GestureHandlerRootView>
   );
