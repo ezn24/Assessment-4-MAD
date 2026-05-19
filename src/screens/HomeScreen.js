@@ -410,10 +410,10 @@ export default function HomeScreen() {
   );
 }
 
-function ScreenTitle({ children, action }) {
+function ScreenTitle({ children, action, isDark = false }) {
   return (
     <View style={styles.titleWrap}>
-      <Text style={styles.screenTitle}>{children}</Text>
+      <Text style={[styles.screenTitle, isDark && styles.textOnDark]}>{children}</Text>
       {action ? <View style={styles.titleAction}>{action}</View> : null}
     </View>
   );
@@ -428,15 +428,15 @@ function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButt
 
   return (
     <View style={[styles.screen, isDark && styles.screenDark]}>
-      <ScreenTitle>Home</ScreenTitle>
+      <ScreenTitle isDark={isDark}>Home</ScreenTitle>
       <ScrollView style={styles.flex} contentContainerStyle={styles.homeList}>
         {!visibleReminders.length ? (
           <View style={styles.emptyHome}>
             <View style={styles.emptyVisual}>
               <MaterialCommunityIcons name="bell-plus-outline" size={42} color={PURPLE} />
             </View>
-            <Text style={styles.emptyTitle}>No reminders yet</Text>
-            <Text style={styles.emptyText}>Use the add button below to create your first visual reminder.</Text>
+            <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>No reminders yet</Text>
+            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Use the add button below to create your first visual reminder.</Text>
           </View>
         ) : null}
         {visibleReminders.map((reminder, index) => (
@@ -450,16 +450,16 @@ function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButt
                 />
               )}
             >
-            <Pressable style={styles.taskRow} onPress={() => onEdit(reminder)}>
+            <Pressable style={[styles.taskRow, isDark && styles.cardOnDark]} onPress={() => onEdit(reminder)}>
               <View style={styles.visualBubble}>
                 <VisualCue reminder={reminder} size={44} iconSize={22} compact />
               </View>
               <View style={styles.taskCopy}>
                 <Text style={styles.taskTime}>
-                  {format(parseISO(reminder.scheduledAt), "h:mm a")} Â· {getCountdownLabel(reminder.scheduledAt)}
+                  {format(parseISO(reminder.scheduledAt), "h:mm a")} ¡¤ {getCountdownLabel(reminder.scheduledAt)}
                 </Text>
-                <Text style={styles.taskTitle}>{reminder.title}</Text>
-                {reminder.description ? <Text style={styles.taskDescription}>{reminder.description}</Text> : null}
+                <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
+                {reminder.description ? <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>{reminder.description}</Text> : null}
               </View>
               <View style={styles.taskActions}>
               {showReminderDebugButton ? (
@@ -475,7 +475,7 @@ function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButt
         ))}
 
       </ScrollView>
-      <View style={styles.searchDock}>
+      <View style={[styles.searchDock, isDark && styles.surfaceVariantOnDark]}>
         <MaterialCommunityIcons name="magnify" size={22} color={MUTED} />
         <TextInput
           value={query}
@@ -486,6 +486,8 @@ function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButt
           underlineColor="transparent"
           activeUnderlineColor="transparent"
           style={styles.searchDockInput}
+          textColor={isDark ? "#E6E0E9" : TEXT}
+          placeholderTextColor={isDark ? "#CAC4D0" : MUTED}
         />
         <Pressable style={styles.addButton} onPress={onAdd}>
           <MaterialCommunityIcons name="plus" size={26} color="#FFFFFF" />
@@ -512,10 +514,10 @@ function ScheduleTab({ markedDates, reminders, isDark, onEdit }) {
 
   return (
     <View style={[styles.screen, isDark && styles.screenDark]}>
-      <ScreenTitle>Schedule</ScreenTitle>
+      <ScreenTitle isDark={isDark}>Schedule</ScreenTitle>
       <ScrollView contentContainerStyle={styles.scheduleContent}>
         <View style={[styles.materialCard, isDark && styles.materialCardDark]}>
-          <Text style={styles.sectionTitle}>Month task distribution</Text>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Month task distribution</Text>
           <Calendar
             markedDates={selectedMarkedDates}
             onDayPress={(day) => setSelectedDate(day.dateString)}
@@ -531,15 +533,15 @@ function ScheduleTab({ markedDates, reminders, isDark, onEdit }) {
           />
         </View>
         <View style={[styles.materialCard, isDark && styles.materialCardDark]}>
-          <Text style={styles.sectionTitle}>{format(parseISO(selectedDate), DATE_DISPLAY_FORMAT)} reminders</Text>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>{format(parseISO(selectedDate), DATE_DISPLAY_FORMAT)} reminders</Text>
           {selectedReminders.length ? (
             selectedReminders.map((reminder) => (
               <Pressable key={reminder.id} style={styles.scheduleRow} onPress={() => onEdit(reminder)}>
                 <VisualCue reminder={reminder} size={44} iconSize={22} compact />
                 <View style={styles.scheduleCopy}>
-                  <Text style={styles.taskTitle}>{reminder.title}</Text>
+                  <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
                   <Text style={styles.taskTime}>
-                    {format(parseISO(reminder.scheduledAt), "h:mm a")} Â· {getCountdownLabel(reminder.scheduledAt)}
+                    {format(parseISO(reminder.scheduledAt), "h:mm a")} ¡¤ {getCountdownLabel(reminder.scheduledAt)}
                   </Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={MUTED} />
@@ -548,7 +550,7 @@ function ScheduleTab({ markedDates, reminders, isDark, onEdit }) {
           ) : (
             <View style={styles.emptySchedule}>
               <MaterialCommunityIcons name="calendar-blank-outline" size={28} color={MUTED} />
-              <Text style={styles.emptyText}>No reminders on this date.</Text>
+              <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>No reminders on this date.</Text>
             </View>
           )}
         </View>
@@ -569,7 +571,7 @@ function SwipeDeleteAction({ onPress }) {
 function ReminderPrompt({ reminder, isDark, onNo, onYes }) {
   return (
     <Animatable.View animation="fadeInUp" duration={260} style={[styles.reminderScreen, isDark && styles.screenDark]} useNativeDriver>
-      <ScreenTitle>VizMinder</ScreenTitle>
+      <ScreenTitle isDark={isDark}>VizMinder</ScreenTitle>
       <VisualCue reminder={reminder} size={104} iconSize={48} />
       <View style={styles.reminderCopy}>
         <Text style={styles.reminderHeadline}>It is {format(parseISO(reminder.scheduledAt), "hh:mm")} now !</Text>
@@ -598,9 +600,7 @@ function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSav
       DateTimePickerAndroid.open({
         value: timePickerValue,
         mode: "time",
-        display: "clock",
-        design: "material",
-        initialInputMode: "default",
+        display: "default",
         is24Hour: true,
         positiveButton: { label: "OK", textColor: PURPLE },
         negativeButton: { label: "Cancel", textColor: MUTED },
@@ -625,9 +625,7 @@ function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSav
       DateTimePickerAndroid.open({
         value: datePickerValue,
         mode: "date",
-        display: "calendar",
-        design: "material",
-        initialInputMode: "default",
+        display: "default",
         positiveButton: { label: "OK", textColor: PURPLE },
         negativeButton: { label: "Cancel", textColor: MUTED },
         neutralButton: { label: "Clear", textColor: MUTED },
@@ -654,7 +652,7 @@ function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSav
 
   return (
     <Animatable.View animation="fadeInUp" duration={240} style={[styles.screen, isDark && styles.screenDark]} useNativeDriver>
-      <ScreenTitle>{mode === "add" ? "Add Task" : "Edit Task"}</ScreenTitle>
+      <ScreenTitle isDark={isDark}>{mode === "add" ? "Add Task" : "Edit Task"}</ScreenTitle>
       <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled">
         <View style={styles.imageEditWrap}>
           <VisualCue reminder={reminder} size={104} iconSize={48} />
@@ -663,31 +661,34 @@ function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSav
           </Pressable>
         </View>
 
-        <VisualSourcePicker reminder={reminder} onUpdate={onUpdate} onAttachImage={onAttachImage} />
+        <VisualSourcePicker reminder={reminder} isDark={isDark} onUpdate={onUpdate} onAttachImage={onAttachImage} />
 
-        <EditTextField label="Title" value={reminder.title} onChangeText={(title) => onUpdate({ title })} />
+        <EditTextField isDark={isDark} label="Title" value={reminder.title} onChangeText={(title) => onUpdate({ title })} />
         <EditTextField
+          isDark={isDark}
           label="Description (optional)"
           value={reminder.description}
           onChangeText={(description) => onUpdate({ description })}
           multiline
         />
         <EditField
+          isDark={isDark}
           label="Time"
           value={reminder.timeSet === false ? "Required" : format(parseISO(reminder.scheduledAt), "HH:mm")}
           onPress={openTimePicker}
           onClear={() => onUpdate({ timeSet: false })}
         />
         <EditField
+          isDark={isDark}
           label="Date"
           value={reminder.hasDate === false ? "Optional" : format(parseISO(reminder.scheduledAt), DATE_DISPLAY_FORMAT)}
           onPress={openDatePicker}
           onClear={() => onUpdate({ hasDate: false })}
         />
-        <View style={styles.importantRow}>
+        <View style={[styles.importantRow, isDark && styles.cardOnDark]}>
           <View>
-            <Text style={styles.editLabel}>Important reminder</Text>
-            <Text style={styles.importantHelp}>Yes triggers celebration when completed.</Text>
+            <Text style={[styles.editLabel, isDark && styles.textOnDark]}>Important reminder</Text>
+            <Text style={[styles.importantHelp, isDark && styles.mutedOnDark]}>Yes triggers celebration when completed.</Text>
           </View>
           <Switch value={Boolean(reminder.important)} color={PURPLE} onValueChange={(important) => onUpdate({ important })} />
         </View>
@@ -763,12 +764,12 @@ function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSav
   );
 }
 
-function EditField({ label, value, onPress, onClear }) {
+function EditField({ label, value, isDark = false, onPress, onClear }) {
   return (
-    <Pressable style={styles.editField} onPress={onPress}>
-      <Text style={styles.editLabel}>{label}</Text>
-      <View style={styles.editValue}>
-        <Text style={styles.editValueText}>{value}</Text>
+    <Pressable style={[styles.editField, isDark && styles.cardOnDark]} onPress={onPress}>
+      <Text style={[styles.editLabel, isDark && styles.textOnDark]}>{label}</Text>
+      <View style={[styles.editValue, isDark && styles.inputOnDark]}>
+        <Text style={[styles.editValueText, isDark && styles.mutedOnDark]}>{value}</Text>
         <Pressable
           hitSlop={10}
           onPress={(event) => {
@@ -783,10 +784,10 @@ function EditField({ label, value, onPress, onClear }) {
   );
 }
 
-function EditTextField({ label, value, onChangeText, multiline = false }) {
+function EditTextField({ label, value, isDark = false, onChangeText, multiline = false }) {
   return (
-    <View style={[styles.editTextField, multiline && styles.editTextFieldTall]}>
-      <Text style={styles.editLabel}>{label}</Text>
+    <View style={[styles.editTextField, multiline && styles.editTextFieldTall, isDark && styles.cardOnDark]}>
+      <Text style={[styles.editLabel, isDark && styles.textOnDark]}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -797,6 +798,8 @@ function EditTextField({ label, value, onChangeText, multiline = false }) {
         underlineColor="transparent"
         activeUnderlineColor="transparent"
         style={[styles.editTextInput, multiline && styles.editTextInputTall]}
+        textColor={isDark ? "#E6E0E9" : TEXT}
+        placeholderTextColor={isDark ? "#CAC4D0" : MUTED}
       />
     </View>
   );
@@ -805,20 +808,20 @@ function EditTextField({ label, value, onChangeText, multiline = false }) {
 function AccountTab({ completedCount, isDark }) {
   return (
     <View style={[styles.screen, isDark && styles.screenDark]}>
-      <ScreenTitle>Account</ScreenTitle>
+      <ScreenTitle isDark={isDark}>Account</ScreenTitle>
       <View style={[styles.accountCard, isDark && styles.materialCardDark]}>
         <View style={styles.avatar}>
           <MaterialCommunityIcons name="account-outline" size={36} color={PURPLE} />
         </View>
         <View>
-          <Text style={styles.accountName}>User</Text>
-          <Text style={styles.accountPlan}>Free Plan</Text>
+          <Text style={[styles.accountName, isDark && styles.textOnDark]}>User</Text>
+          <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>Free Plan</Text>
         </View>
       </View>
       <View style={[styles.planBlock, isDark && styles.materialCardDark]}>
-        <Text style={styles.planTitle}>Plan</Text>
-        <Text style={styles.planCopy}>Upgrade for more Feature!</Text>
-        <Text style={styles.planCopy}>Completed reminders: {completedCount}</Text>
+        <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Plan</Text>
+        <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Upgrade for more Feature!</Text>
+        <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Completed reminders: {completedCount}</Text>
         <View style={styles.planActions}>
           <Button mode="outlined" textColor="#4E4956" style={styles.planButton}>
             Dismiss
@@ -865,14 +868,14 @@ function SettingsTab({ settings, onUpdateSettings, isDark, onReset, onMessage })
   if (settingsPage === "theme") {
     return (
       <View style={[styles.screen, isDark && styles.screenDark]}>
-        <ScreenTitle>Theme</ScreenTitle>
+        <ScreenTitle isDark={isDark}>Theme</ScreenTitle>
         <ScrollView contentContainerStyle={styles.settingsContent}>
           <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={MUTED} />
-            <Text style={styles.settingsTitle}>Settings</Text>
+            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
           </Pressable>
           <View style={[styles.settingsPanel, isDark && styles.materialCardDark]}>
-            <Text style={styles.sectionTitle}>Theme mode</Text>
+            <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Theme mode</Text>
             <View style={styles.segmentedControl}>
               {[
                 ["light", "Light"],
@@ -884,14 +887,14 @@ function SettingsTab({ settings, onUpdateSettings, isDark, onReset, onMessage })
                   style={[styles.segmentButton, settings.themeMode === mode && styles.segmentButtonActive]}
                   onPress={() => onUpdateSettings({ themeMode: mode })}
                 >
-                  <Text style={[styles.segmentText, settings.themeMode === mode && styles.segmentTextActive]}>{label}</Text>
+                  <Text style={[styles.segmentText, isDark && styles.mutedOnDark, settings.themeMode === mode && styles.segmentTextActive]}>{label}</Text>
                 </Pressable>
               ))}
             </View>
             <View style={styles.settingsSwitchRow}>
               <View style={styles.settingsCopy}>
-                <Text style={styles.settingsTitle}>Follow system Material colors</Text>
-                <Text style={styles.settingsDescription}>
+                <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Follow system Material colors</Text>
+                <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
                   {settings.followSystemColors ? "Use system color preference when available." : "Use VizMinder purple palette."}
                 </Text>
               </View>
@@ -906,17 +909,17 @@ function SettingsTab({ settings, onUpdateSettings, isDark, onReset, onMessage })
   if (settingsPage === "advanced") {
     return (
       <View style={[styles.screen, isDark && styles.screenDark]}>
-        <ScreenTitle>Advanced</ScreenTitle>
+        <ScreenTitle isDark={isDark}>Advanced</ScreenTitle>
         <ScrollView contentContainerStyle={styles.settingsContent}>
           <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={MUTED} />
-            <Text style={styles.settingsTitle}>Settings</Text>
+            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
           </Pressable>
           <View style={[styles.settingsPanel, isDark && styles.materialCardDark]}>
             <View style={styles.settingsSwitchRow}>
               <View style={styles.settingsCopy}>
-                <Text style={styles.settingsTitle}>Reminder debug button</Text>
-                <Text style={styles.settingsDescription}>Show the Home test button for the Yes/No prompt.</Text>
+                <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Reminder debug button</Text>
+                <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>Show the Home test button for the Yes/No prompt.</Text>
               </View>
               <Switch
                 value={settings.showReminderDebugButton}
@@ -924,7 +927,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, onReset, onMessage })
                 onValueChange={(value) => onUpdateSettings({ showReminderDebugButton: value })}
               />
             </View>
-            <Text style={styles.settingsDescription}>
+            <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
               The installed Android APK uses native AlarmManager and a lock-screen Activity for full-screen visual reminders. Android may still require notification and exact alarm permission.
             </Text>
           </View>
@@ -935,7 +938,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, onReset, onMessage })
 
   return (
     <View style={[styles.screen, isDark && styles.screenDark]}>
-      <ScreenTitle>Settings</ScreenTitle>
+      <ScreenTitle isDark={isDark}>Settings</ScreenTitle>
       <ScrollView contentContainerStyle={styles.settingsContent}>
         <View style={[styles.settingsList, isDark && styles.materialCardDark]}>
           {items.map(([icon, title, copy, action]) => (
@@ -943,8 +946,8 @@ function SettingsTab({ settings, onUpdateSettings, isDark, onReset, onMessage })
               <View style={styles.settingsRow}>
                 <MaterialCommunityIcons name={icon} size={24} color="#4E4956" />
                 <View style={styles.settingsCopy}>
-                  <Text style={styles.settingsTitle}>{title}</Text>
-                  <Text style={styles.settingsDescription}>{copy}</Text>
+                  <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>{title}</Text>
+                  <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{copy}</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={MUTED} />
               </View>
@@ -1014,10 +1017,10 @@ function VisualCue({ reminder, size, iconSize, compact = false }) {
   );
 }
 
-function VisualSourcePicker({ reminder, onUpdate, onAttachImage }) {
+function VisualSourcePicker({ reminder, isDark = false, onUpdate, onAttachImage }) {
   const visualType = reminder.visualType || (reminder.imageUri ? "image" : "icon");
   return (
-    <View style={styles.visualPicker}>
+    <View style={[styles.visualPicker, isDark && styles.cardOnDark]}>
       <View style={styles.visualTabs}>
         {[
           ["image", "image-outline", "Photo"],
@@ -1026,7 +1029,7 @@ function VisualSourcePicker({ reminder, onUpdate, onAttachImage }) {
         ].map(([type, icon, label]) => (
           <Pressable
             key={type}
-            style={[styles.visualTab, visualType === type && styles.visualTabActive]}
+            style={[styles.visualTab, isDark && styles.outlineOnDark, visualType === type && styles.visualTabActive]}
             onPress={() => {
               if (type === "image") {
                 onAttachImage();
@@ -1036,7 +1039,7 @@ function VisualSourcePicker({ reminder, onUpdate, onAttachImage }) {
             }}
           >
             <MaterialCommunityIcons name={icon} size={18} color={visualType === type ? "#FFFFFF" : PURPLE} />
-            <Text style={[styles.visualTabText, visualType === type && styles.visualTabTextActive]}>{label}</Text>
+            <Text style={[styles.visualTabText, isDark && styles.primaryOnDark, visualType === type && styles.visualTabTextActive]}>{label}</Text>
           </Pressable>
         ))}
       </View>
@@ -1046,7 +1049,7 @@ function VisualSourcePicker({ reminder, onUpdate, onAttachImage }) {
           {ICON_OPTIONS.map((icon) => (
             <Pressable
               key={icon}
-              style={[styles.visualChoice, reminder.icon === icon && styles.visualChoiceActive]}
+              style={[styles.visualChoice, isDark && styles.inputOnDark, reminder.icon === icon && styles.visualChoiceActive]}
               onPress={() => onUpdate({ visualType: "icon", icon })}
             >
               <MaterialCommunityIcons name={icon} size={24} color={reminder.icon === icon ? "#FFFFFF" : PURPLE} />
@@ -1060,7 +1063,7 @@ function VisualSourcePicker({ reminder, onUpdate, onAttachImage }) {
           {EMOJI_OPTIONS.map((emoji) => (
             <Pressable
               key={emoji}
-              style={[styles.visualChoice, reminder.emoji === emoji && styles.visualChoiceActive]}
+              style={[styles.visualChoice, isDark && styles.inputOnDark, reminder.emoji === emoji && styles.visualChoiceActive]}
               onPress={() => onUpdate({ visualType: "emoji", emoji })}
             >
               <Text style={styles.emojiChoice}>{emoji}</Text>
@@ -1238,6 +1241,30 @@ const styles = StyleSheet.create({
   },
   safeAreaDark: {
     backgroundColor: "#141218"
+  },
+  textOnDark: {
+    color: "#E6E0E9"
+  },
+  mutedOnDark: {
+    color: "#CAC4D0"
+  },
+  primaryOnDark: {
+    color: "#D0BCFF"
+  },
+  cardOnDark: {
+    backgroundColor: "#211F26",
+    borderColor: "#49454F"
+  },
+  inputOnDark: {
+    backgroundColor: "#2B2930",
+    borderColor: "#5F5A66"
+  },
+  surfaceVariantOnDark: {
+    backgroundColor: "#2B2930",
+    borderColor: "#5F5A66"
+  },
+  outlineOnDark: {
+    borderColor: "#5F5A66"
   },
   flex: {
     flex: 1
