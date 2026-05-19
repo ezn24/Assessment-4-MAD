@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addMinutes, format, formatDistanceStrict, isSameDay, parseISO } from "date-fns";
-import { clearReminders, deleteReminder as deleteStoredReminder, listReminders, seedIfEmpty, upsertReminder } from "../services/storage";
+import { clearReminders, deleteReminder as deleteStoredReminder, listReminders, upsertReminder } from "../services/storage";
 import {
   deleteReminderFromFirestore,
   fetchRemindersFromFirestore,
@@ -66,7 +66,6 @@ export function useReminders() {
   useEffect(() => {
     let cancelled = false;
     async function restore() {
-      await seedIfEmpty();
       const stored = (await listReminders()).map(normalizeReminder);
       if (!cancelled) {
         setReminders(stored);

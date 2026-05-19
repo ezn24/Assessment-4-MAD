@@ -1,7 +1,6 @@
 package com.ezn24.vizmindera4
 
 import android.app.Activity
-import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
 import android.graphics.Color
@@ -33,8 +32,6 @@ class AlarmActivity : Activity() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(true)
       setTurnScreenOn(true)
-      val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-      keyguardManager.requestDismissKeyguard(this, null)
     } else {
       @Suppress("DEPRECATION")
       window.addFlags(
@@ -47,7 +44,6 @@ class AlarmActivity : Activity() {
     window.addFlags(
       WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
         WindowManager.LayoutParams.FLAG_FULLSCREEN or
-        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
         WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
         WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
     )
@@ -63,34 +59,34 @@ class AlarmActivity : Activity() {
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
       gravity = Gravity.CENTER_HORIZONTAL
-      setPadding(dp(24), dp(42), dp(24), dp(42))
+      setPadding(dp(22), dp(34), dp(22), dp(34))
       setBackgroundColor(surface)
       layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     val appName = TextView(this).apply {
       text = "VizMinder"
-      textSize = 34f
+      textSize = 30f
       typeface = Typeface.DEFAULT
       gravity = Gravity.CENTER
       setTextColor(Color.rgb(29, 27, 32))
     }
-    root.addView(appName, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
+    root.addView(appName, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
 
     val visual = TextView(this).apply {
       text = emoji
-      textSize = 48f
+      textSize = 42f
       gravity = Gravity.CENTER
       background = rounded(visualBg, dp(30))
       includeFontPadding = false
     }
-    root.addView(visual, LinearLayout.LayoutParams(dp(132), dp(132)).apply { topMargin = dp(18) })
+    root.addView(visual, LinearLayout.LayoutParams(dp(104), dp(104)).apply { topMargin = dp(14) })
 
     root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
 
     val time = TextView(this).apply {
       text = "It is ${formatAlarmTime(fireTime)} now !"
-      textSize = 38f
+      textSize = 28f
       typeface = Typeface.DEFAULT_BOLD
       gravity = Gravity.CENTER
       setTextColor(primary)
@@ -99,21 +95,22 @@ class AlarmActivity : Activity() {
 
     val question = TextView(this).apply {
       text = "Have you completed\n$title?"
-      textSize = 30f
+      textSize = 22f
       typeface = Typeface.DEFAULT_BOLD
       gravity = Gravity.CENTER
       setTextColor(primary)
-      setPadding(0, dp(26), 0, dp(10))
+      setPadding(0, dp(18), 0, dp(8))
     }
     root.addView(question, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
     if (body.isNotBlank()) {
       val bodyView = TextView(this).apply {
         text = body
-        textSize = 16f
+        textSize = 14f
         gravity = Gravity.CENTER
         setTextColor(Color.rgb(73, 69, 79))
         setPadding(dp(18), 0, dp(18), 0)
+        maxLines = 2
       }
       root.addView(bodyView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
@@ -126,7 +123,7 @@ class AlarmActivity : Activity() {
     }
     val noButton = TextView(this).apply {
       text = "\u00D7"
-      textSize = 52f
+      textSize = 42f
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
       background = oval(primary)
@@ -134,14 +131,14 @@ class AlarmActivity : Activity() {
     }
     val yesButton = TextView(this).apply {
       text = "\u2713"
-      textSize = 52f
+      textSize = 42f
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
       background = oval(secondary)
       setOnClickListener { finishAlarm() }
     }
-    actionRow.addView(noButton, LinearLayout.LayoutParams(dp(132), dp(132)).apply { marginEnd = dp(42) })
-    actionRow.addView(yesButton, LinearLayout.LayoutParams(dp(132), dp(132)).apply { marginStart = dp(42) })
+    actionRow.addView(noButton, LinearLayout.LayoutParams(dp(104), dp(104)).apply { marginEnd = dp(24) })
+    actionRow.addView(yesButton, LinearLayout.LayoutParams(dp(104), dp(104)).apply { marginStart = dp(24) })
     root.addView(actionRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
     return root

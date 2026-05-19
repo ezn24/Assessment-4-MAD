@@ -24,10 +24,10 @@
         "READ_MEDIA_IMAGES",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-      "POST_NOTIFICATIONS",
-      "SCHEDULE_EXACT_ALARM",
-      "USE_FULL_SCREEN_INTENT",
-      "WAKE_LOCK"
+        "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM",
+        "USE_FULL_SCREEN_INTENT",
+        "WAKE_LOCK"
       ]
     },
     "plugins": [

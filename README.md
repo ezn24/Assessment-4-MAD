@@ -1,75 +1,201 @@
 # VizMinder A4
 
-VizMinder A4 is an Android-focused React Native / Expo application for context-aware visual reminders. It carries forward the visual design language from `VizMinder-MAD`: a soft Material-inspired interface, visual-first reminder rows, bottom search/add dock, pill-style bottom navigation, and a low-friction full-screen Yes/No reminder prompt.
+VizMinder A4 is an Android-focused React Native app for visual-first reminders. It keeps the UI direction from `VizMinder-MAD`: Material-style surfaces, visual reminder cues, a bottom search/add dock, pill navigation, and a low-friction Yes/No reminder flow.
 
-This version is built as an Assessment 4 app foundation rather than a throwaway prototype. It keeps the VizMinder interaction model while adding the required mobile development technologies: Firebase, SQLite, device capabilities, notifications, background work, testing, and build readiness.
+This version is intended to be installed as an APK, not run only in Expo Go. Native Android code is included for exact alarms and a full-screen reminder Activity.
 
-## Implemented Requirements
+## Features
 
-| A4 requirement | Implementation |
-| --- | --- |
-| Functional screens and navigation | Home, Schedule, Map, Account, Settings, Add/Edit, and Reminder Prompt screens with VizMinder-style bottom navigation and data passing through selected reminder objects. |
-| Firebase Authentication | Anonymous sign-in service in `src/services/firebase.js`; falls back to offline demo mode when credentials are not configured. |
-| Firebase Firestore | Reminder sync service writes user reminders to `users/{uid}/reminders`; disabled safely without credentials. |
-| Firebase Test Lab | Project is prepared for APK/build testing; Test Lab evidence should be captured after building an APK. |
-| SQLite / relational storage | `expo-sqlite` stores reminders in a local `reminders` table for reliable offline use. |
-| Device capability: notifications | `expo-notifications` schedules local reminders and opens the in-app prompt when notifications are received or tapped. |
-| Device capability: GPS/maps | `expo-location` attaches current coordinates; `react-native-maps` displays reminders with markers. |
-| Device capability: media | `expo-image-picker` lets users attach photos as visual reminder cues. |
-| Battery | `expo-battery` displays current battery level in Settings. |
-| Parallel/background work | `expo-background-task` and `expo-task-manager` register a reminder sweep task. |
-| Testing | Jest is configured with initial unit tests for reminder model logic. |
-| No hard-coded secrets | Firebase configuration is read from `app.json` `extra` values and can be moved to environment-driven config for production. |
+- Visual reminders with a photo, Material icon, or emoji cue.
+- Add, edit, search, toggle, delete, and swipe-delete reminder tasks.
+- Risk warnings before destructive actions, plus Snackbar undo after deleting one reminder.
+- Schedule tab with month distribution and clickable reminder rows.
+- Daily repeat reminders and one-shot reminders.
+- Native Android full-screen alarm path using `AlarmManager`, full-screen notification intent, and a lock-screen Activity.
+- Firebase anonymous Authentication and Firestore sync when Firebase config is provided.
+- SQLite local persistence for offline and app-restart safety.
+- Material 3 light, dark, system, and dynamic color settings.
+- Image picker with camera/gallery menu.
+- Jest tests for reminder model behavior.
 
-## Setup
+## Requirements
+
+- Node.js 20+ and npm.
+- Java JDK 17.
+- Android SDK with platform tools and build tools installed.
+- Android device or emulator for installed APK testing.
+- Firebase project if cloud sync or Test Lab evidence is required.
+- Google Cloud CLI if running Firebase Test Lab from the command line.
+
+Check Android SDK environment variables:
+
+```bash
+echo $env:ANDROID_HOME
+adb version
+```
+
+On Windows, a common SDK path is:
+
+```text
+C:\Users\<you>\AppData\Local\Android\Sdk
+```
+
+## Install
 
 ```bash
 npm install
+```
+
+## Development
+
+Expo Go can preview some React Native screens, but it cannot fully test native alarm behavior, exact alarms, or the custom lock-screen Activity. Use an installed APK for final verification.
+
+```bash
 npm start
 ```
 
-For Android export validation:
+For export validation:
 
 ```bash
 npm run export:android
 ```
 
-For tests:
+Run tests:
 
 ```bash
 npm test
 ```
 
-## Firebase Configuration
+## Local APK Build
 
-The app runs in offline demo mode without Firebase credentials. To enable Firebase, set these values in `app.json` under `expo.extra`:
+The project supports local Android builds through the checked-in `android` folder.
 
-- `firebaseApiKey`
-- `firebaseAuthDomain`
-- `firebaseProjectId`
-- `firebaseStorageBucket`
-- `firebaseMessagingSenderId`
-- `firebaseAppId`
+```bash
+npm run build:apk
+```
 
-Do not commit real secrets or production credentials.
+Expected Gradle output:
+
+```text
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+The convenience copy used by the Test Lab script is:
+
+```text
+build/vizminder-a4.apk
+```
+
+If it is missing after a build:
+
+```powershell
+New-Item -ItemType Directory -Force build
+Copy-Item android\app\build\outputs\apk\release\app-release.apk build\vizminder-a4.apk -Force
+```
+
+## Firebase Setup
+
+The app works offline without Firebase values. With Firebase configured, it signs in anonymously and syncs reminders to Firestore.
+
+Create a Firebase project, then enable:
+
+- Authentication: Anonymous provider.
+- Firestore Database.
+- Test Lab, if assessment evidence requires automated device testing.
+
+Set these values in `app.json` under `expo.extra`:
+
+```json
+{
+  "firebaseApiKey": "YOUR_API_KEY",
+  "firebaseAuthDomain": "YOUR_PROJECT.firebaseapp.com",
+  "firebaseProjectId": "YOUR_PROJECT_ID",
+  "firebaseStorageBucket": "YOUR_PROJECT.appspot.com",
+  "firebaseMessagingSenderId": "YOUR_SENDER_ID",
+  "firebaseAppId": "YOUR_APP_ID"
+}
+```
+
+Firestore path:
+
+```text
+users/{anonymousUserId}/reminders/{reminderId}
+```
+
+Do not commit production secrets. For a production project, move these values to an environment-driven config process.
+
+## Firebase Test Lab
+
+Build the APK first:
+
+```bash
+npm run build:apk
+```
+
+Then copy it to `build/vizminder-a4.apk` if needed and run:
+
+```bash
+npm run test:firebase-lab
+```
+
+If Google rejects a device model, list valid models:
+
+```bash
+gcloud firebase test android models list
+```
+
+Then update the script in `package.json` to a valid model/version pair.
+
+## Android Alarm Notes
+
+VizMinder uses native Android code for the installed APK alarm flow:
+
+- `AlarmManager` schedules exact reminder alarms.
+- `AlarmReceiver` creates a high-priority full-screen notification.
+- `AlarmActivity` displays the Yes/No visual reminder UI over the lock screen where Android allows it.
+
+Android may still require the user to allow:
+
+- Notifications.
+- Exact alarms.
+- Full-screen notifications, on newer Android versions.
+
+Some OEM lock-screen policies can block direct full-screen display until the screen wakes or the notification is tapped. The app avoids requesting device unlock; it only requests lock-screen display and screen wake.
 
 ## Main Packages
 
-- [`expo`](https://www.npmjs.com/package/expo): managed React Native runtime.
-- [`react-native-paper`](https://www.npmjs.com/package/react-native-paper): Material Design components.
-- [`firebase`](https://www.npmjs.com/package/firebase): Authentication and Firestore integration.
-- [`expo-sqlite`](https://www.npmjs.com/package/expo-sqlite): local relational storage.
-- [`expo-notifications`](https://www.npmjs.com/package/expo-notifications): local scheduled notifications.
-- [`expo-location`](https://www.npmjs.com/package/expo-location): GPS coordinates for context-aware reminders.
-- [`react-native-maps`](https://www.npmjs.com/package/react-native-maps): map and marker display.
-- [`expo-image-picker`](https://www.npmjs.com/package/expo-image-picker): photo visual cues.
-- [`expo-background-task`](https://www.npmjs.com/package/expo-background-task): registered background sweep task.
-- [`expo-battery`](https://www.npmjs.com/package/expo-battery): battery status evidence.
-- [`jest-expo`](https://www.npmjs.com/package/jest-expo): test runner preset for Expo.
+- [`expo`](https://www.npmjs.com/package/expo): React Native runtime and build tooling.
+- [`react-native-paper`](https://www.npmjs.com/package/react-native-paper): Material 3 UI components.
+- [`@pchmn/expo-material3-theme`](https://www.npmjs.com/package/@pchmn/expo-material3-theme): Android dynamic Material color extraction.
+- [`firebase`](https://www.npmjs.com/package/firebase): Authentication and Firestore sync.
+- [`expo-sqlite`](https://www.npmjs.com/package/expo-sqlite): offline local reminder persistence.
+- [`@react-native-async-storage/async-storage`](https://www.npmjs.com/package/@react-native-async-storage/async-storage): app settings persistence.
+- [`expo-notifications`](https://www.npmjs.com/package/expo-notifications): notification permissions and non-Android scheduling fallback.
+- [`@react-native-community/datetimepicker`](https://www.npmjs.com/package/@react-native-community/datetimepicker): native Android date/time pickers.
+- [`expo-image-picker`](https://www.npmjs.com/package/expo-image-picker): camera and gallery visual cues.
+- [`react-native-gesture-handler`](https://www.npmjs.com/package/react-native-gesture-handler): native swipe-delete gesture.
+- [`react-native-animatable`](https://www.npmjs.com/package/react-native-animatable): screen and list animations.
+- [`react-native-confetti-cannon`](https://www.npmjs.com/package/react-native-confetti-cannon): completion celebration for important reminders.
+- [`date-fns`](https://www.npmjs.com/package/date-fns): date formatting and countdown labels.
+- [`react-native-calendars`](https://www.npmjs.com/package/react-native-calendars): Schedule month view.
+- [`expo-haptics`](https://www.npmjs.com/package/expo-haptics): tactile feedback for completion and deletion.
+- [`jest-expo`](https://www.npmjs.com/package/jest-expo): Jest preset for Expo tests.
+
+## Contributing Guide
+
+1. Create a focused branch for each change.
+2. Keep commits small and descriptive. Do not mix UI polish, native alarm changes, and Firebase changes in one commit unless they are tightly related.
+3. Before changing screens, compare with the original VizMinder visual direction: soft Material surfaces, clear visual cues, bottom search/add dock, and low cognitive load.
+4. Do not add default demo tasks unless the task specifically requires seeded data.
+5. Native reminder changes must be tested on an installed APK, not only Expo Go.
+6. Run `npm test` before committing JavaScript logic changes.
+7. Run `npm run export:android` after React Native screen or dependency changes.
+8. Run `npm run build:apk` after native Android, permissions, package, or alarm changes.
+9. Update this README when build steps, Firebase setup, permissions, or package responsibilities change.
 
 ## Known Limitations
 
-- Full lock-screen alarm style behavior requires native Android work and a development build; Expo Go cannot fully emulate system alarm UI.
-- Firebase Test Lab evidence must be collected after an APK/AAB build is produced.
-- Firestore sync is one-way in the current prototype; conflict resolution should be added before production use.
-- Location reminders store coordinates, but geofencing is not yet implemented.
+- Full-screen lock-screen alarms depend on Android version, OEM policy, notification permission, exact alarm permission, and full-screen notification settings.
+- Firestore sync currently uses simple last-write merging between local SQLite and cloud data.
+- Image cues can consume local storage quickly; production builds should add image compression and cleanup for deleted reminders.
+- Test Lab results are not bundled in the repository; capture screenshots/logs separately for assessment submission.

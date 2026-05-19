@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Appearance } from "react-native";
+import { Appearance, useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMaterial3Theme } from "@pchmn/expo-material3-theme";
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from "react-native-paper";
@@ -16,8 +16,10 @@ const DEFAULT_SETTINGS = {
 };
 
 export default function App() {
-  const [systemScheme, setSystemScheme] = useState(Appearance.getColorScheme() || "light");
+  const hookScheme = useColorScheme();
+  const [appearanceScheme, setAppearanceScheme] = useState(Appearance.getColorScheme() || "light");
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const systemScheme = hookScheme || appearanceScheme || "light";
   const activeScheme = settings.themeMode === "system" ? systemScheme : settings.themeMode;
   const isDark = activeScheme === "dark";
   const { theme: materialTheme } = useMaterial3Theme({ fallbackSourceColor: "#6750A4" });
@@ -34,7 +36,7 @@ export default function App() {
 
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
-      setSystemScheme(colorScheme || "light");
+      setAppearanceScheme(colorScheme || "light");
     });
     return () => subscription.remove();
   }, []);
