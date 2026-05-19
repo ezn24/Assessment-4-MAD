@@ -7,7 +7,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.media.AudioAttributes
 import android.os.Build
 import java.util.Calendar
 import androidx.core.app.NotificationCompat
@@ -18,8 +17,11 @@ class AlarmReceiver : BroadcastReceiver() {
     val reminderId = intent.getStringExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID) ?: "reminder"
     val title = intent.getStringExtra(AlarmSchedulerModule.EXTRA_TITLE) ?: "VizMinder reminder"
     val body = intent.getStringExtra(AlarmSchedulerModule.EXTRA_BODY) ?: "Time to check this visual reminder."
+    val fireTime = intent.getStringExtra(AlarmSchedulerModule.EXTRA_FIRE_TIME) ?: ""
     val repeatDaily = intent.getBooleanExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, false)
     val ringtone = intent.getStringExtra(AlarmSchedulerModule.EXTRA_RINGTONE) ?: "alarm"
+    val visualType = intent.getStringExtra(AlarmSchedulerModule.EXTRA_VISUAL_TYPE) ?: "icon"
+    val emoji = intent.getStringExtra(AlarmSchedulerModule.EXTRA_EMOJI) ?: "\uD83D\uDD14"
 
     ensureChannel(context)
 
@@ -28,8 +30,11 @@ class AlarmReceiver : BroadcastReceiver() {
       putExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID, reminderId)
       putExtra(AlarmSchedulerModule.EXTRA_TITLE, title)
       putExtra(AlarmSchedulerModule.EXTRA_BODY, body)
+      putExtra(AlarmSchedulerModule.EXTRA_FIRE_TIME, fireTime)
       putExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, repeatDaily)
       putExtra(AlarmSchedulerModule.EXTRA_RINGTONE, ringtone)
+      putExtra(AlarmSchedulerModule.EXTRA_VISUAL_TYPE, visualType)
+      putExtra(AlarmSchedulerModule.EXTRA_EMOJI, emoji)
     }
     val fullScreenIntent = PendingIntent.getActivity(
       context,
@@ -48,6 +53,7 @@ class AlarmReceiver : BroadcastReceiver() {
       .setOngoing(true)
       .setAutoCancel(false)
       .setColor(Color.rgb(79, 55, 139))
+      .setSilent(true)
       .setFullScreenIntent(fullScreenIntent, true)
       .setContentIntent(fullScreenIntent)
       .build()
@@ -55,11 +61,11 @@ class AlarmReceiver : BroadcastReceiver() {
     NotificationManagerCompat.from(context).notify(reminderId.hashCode(), notification)
     context.startActivity(alarmIntent)
     if (repeatDaily) {
-      scheduleNextDailyAlarm(context, reminderId, title, body, ringtone)
+      scheduleNextDailyAlarm(context, reminderId, title, body, ringtone, visualType, emoji)
     }
   }
 
-  private fun scheduleNextDailyAlarm(context: Context, reminderId: String, title: String, body: String, ringtone: String) {
+  private fun scheduleNextDailyAlarm(context: Context, reminderId: String, title: String, body: String, ringtone: String, visualType: String, emoji: String) {
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
     val next = Calendar.getInstance().apply {
       timeInMillis = System.currentTimeMillis()
@@ -71,8 +77,11 @@ class AlarmReceiver : BroadcastReceiver() {
       putExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID, reminderId)
       putExtra(AlarmSchedulerModule.EXTRA_TITLE, title)
       putExtra(AlarmSchedulerModule.EXTRA_BODY, body)
+      putExtra(AlarmSchedulerModule.EXTRA_FIRE_TIME, java.time.Instant.ofEpochMilli(next).toString())
       putExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, true)
       putExtra(AlarmSchedulerModule.EXTRA_RINGTONE, ringtone)
+      putExtra(AlarmSchedulerModule.EXTRA_VISUAL_TYPE, visualType)
+      putExtra(AlarmSchedulerModule.EXTRA_EMOJI, emoji)
     }
     val operation = PendingIntent.getBroadcast(
       context,
@@ -85,8 +94,11 @@ class AlarmReceiver : BroadcastReceiver() {
       putExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID, reminderId)
       putExtra(AlarmSchedulerModule.EXTRA_TITLE, title)
       putExtra(AlarmSchedulerModule.EXTRA_BODY, body)
+      putExtra(AlarmSchedulerModule.EXTRA_FIRE_TIME, java.time.Instant.ofEpochMilli(next).toString())
       putExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, true)
       putExtra(AlarmSchedulerModule.EXTRA_RINGTONE, ringtone)
+      putExtra(AlarmSchedulerModule.EXTRA_VISUAL_TYPE, visualType)
+      putExtra(AlarmSchedulerModule.EXTRA_EMOJI, emoji)
     }
     val showOperation = PendingIntent.getActivity(
       context,
@@ -106,19 +118,13 @@ class AlarmReceiver : BroadcastReceiver() {
       setBypassDnd(true)
       enableVibration(true)
       vibrationPattern = longArrayOf(0, 450, 200, 450)
-      setSound(
-        android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI,
-        AudioAttributes.Builder()
-          .setUsage(AudioAttributes.USAGE_ALARM)
-          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-          .build()
-      )
+      setSound(null, null)
     }
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.createNotificationChannel(channel)
   }
 
   companion object {
-    const val CHANNEL_ID = "vizminder-native-alarms"
+    const val CHANNEL_ID = "vizminder-native-alarms-v2"
   }
 }

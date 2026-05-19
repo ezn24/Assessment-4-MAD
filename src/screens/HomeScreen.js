@@ -166,6 +166,11 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
 
   useEffect(() => {
     configureNotificationChannel().catch(() => {});
+    if (Platform.OS === "android") {
+      // Android reminders now use the native full-screen alarm path.
+      // Clear legacy Expo reminder schedules from older APKs so they do not ring in parallel.
+      Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+    }
 
     const received = Notifications.addNotificationReceivedListener((notification) => {
       const reminderId = notification.request.content.data?.reminderId;
@@ -1180,6 +1185,13 @@ async function ensureNotificationPermission() {
 
 async function scheduleReminderNotification(reminder) {
   if (reminder.timeSet === false || reminder.completed) {
+    return null;
+  }
+
+  // Installed Android builds use the native AlarmManager full-screen alarm path.
+  // Skipping Expo's parallel local notification prevents duplicate alarm sounds.
+  if (Platform.OS === "android") {
+    await ensureNotificationPermission();
     return null;
   }
 

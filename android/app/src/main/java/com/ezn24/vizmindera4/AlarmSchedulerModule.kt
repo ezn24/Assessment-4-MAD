@@ -17,7 +17,7 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
   override fun getName(): String = "AlarmScheduler"
 
   @ReactMethod
-  fun scheduleAlarm(reminderId: String, title: String, body: String, isoTime: String, repeatDaily: Boolean, ringtone: String, promise: Promise) {
+  fun scheduleAlarm(reminderId: String, title: String, body: String, isoTime: String, repeatDaily: Boolean, ringtone: String, visualType: String, emoji: String, promise: Promise) {
     try {
       val fireAt = Instant.parse(isoTime).toEpochMilli()
       if (fireAt <= System.currentTimeMillis()) {
@@ -41,8 +41,11 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
         putExtra(EXTRA_REMINDER_ID, reminderId)
         putExtra(EXTRA_TITLE, title)
         putExtra(EXTRA_BODY, body)
+        putExtra(EXTRA_FIRE_TIME, isoTime)
         putExtra(EXTRA_REPEAT_DAILY, repeatDaily)
         putExtra(EXTRA_RINGTONE, ringtone)
+        putExtra(EXTRA_VISUAL_TYPE, visualType)
+        putExtra(EXTRA_EMOJI, emoji)
       }
       val operation = PendingIntent.getBroadcast(
         reactContext,
@@ -56,8 +59,11 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
         putExtra(EXTRA_REMINDER_ID, reminderId)
         putExtra(EXTRA_TITLE, title)
         putExtra(EXTRA_BODY, body)
+        putExtra(EXTRA_FIRE_TIME, isoTime)
         putExtra(EXTRA_REPEAT_DAILY, repeatDaily)
         putExtra(EXTRA_RINGTONE, ringtone)
+        putExtra(EXTRA_VISUAL_TYPE, visualType)
+        putExtra(EXTRA_EMOJI, emoji)
       }
       val showOperation = PendingIntent.getActivity(
         reactContext,
@@ -103,7 +109,10 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
     const val EXTRA_REMINDER_ID = "reminderId"
     const val EXTRA_TITLE = "title"
     const val EXTRA_BODY = "body"
+    const val EXTRA_FIRE_TIME = "fireTime"
     const val EXTRA_REPEAT_DAILY = "repeatDaily"
     const val EXTRA_RINGTONE = "ringtone"
+    const val EXTRA_VISUAL_TYPE = "visualType"
+    const val EXTRA_EMOJI = "emoji"
   }
 }

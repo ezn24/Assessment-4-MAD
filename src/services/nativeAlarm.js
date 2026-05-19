@@ -13,11 +13,13 @@ export async function scheduleNativeAlarm(reminder) {
 
   return AlarmScheduler.scheduleAlarm(
     reminder.id,
-    `VizMinder: ${reminder.title?.trim() || "Reminder"}`,
+    reminder.title?.trim() || "Reminder",
     reminder.description?.trim() || "Time to check this visual reminder.",
     fireAt.toISOString(),
     Boolean(reminder.repeat),
-    reminder.ringtone || "alarm"
+    reminder.ringtone || "alarm",
+    reminder.visualType || (reminder.imageUri ? "image" : "icon"),
+    reminder.emoji || "\u{1F514}"
   );
 }
 

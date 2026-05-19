@@ -1,9 +1,12 @@
 package com.ezn24.vizmindera4
 
-import android.app.NotificationManager
 import android.app.Activity
 import android.app.KeyguardManager
+import android.app.NotificationManager
 import android.content.Context
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
@@ -12,9 +15,11 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class AlarmActivity : Activity() {
   private lateinit var reminderId: String
@@ -24,9 +29,11 @@ class AlarmActivity : Activity() {
     super.onCreate(savedInstanceState)
 
     reminderId = intent.getStringExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID) ?: "reminder"
-    val title = intent.getStringExtra(AlarmSchedulerModule.EXTRA_TITLE) ?: "VizMinder reminder"
+    val title = intent.getStringExtra(AlarmSchedulerModule.EXTRA_TITLE) ?: "Reminder"
     val body = intent.getStringExtra(AlarmSchedulerModule.EXTRA_BODY) ?: "Time to check this visual reminder."
+    val fireTime = intent.getStringExtra(AlarmSchedulerModule.EXTRA_FIRE_TIME) ?: ""
     val ringtone = intent.getStringExtra(AlarmSchedulerModule.EXTRA_RINGTONE) ?: "alarm"
+    val emoji = intent.getStringExtra(AlarmSchedulerModule.EXTRA_EMOJI) ?: "\uD83D\uDD14"
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(true)
@@ -42,22 +49,27 @@ class AlarmActivity : Activity() {
       )
     }
 
-    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     window.addFlags(
-      WindowManager.LayoutParams.FLAG_FULLSCREEN or
+      WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+        WindowManager.LayoutParams.FLAG_FULLSCREEN or
         WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
         WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
         WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
     )
     playAlarmSound(ringtone)
+    setContentView(buildReminderView(title, body, fireTime, emoji))
+  }
 
-    val primary = 0xFF4F378B.toInt()
-    val surface = 0xFFFFFBFE.toInt()
+  private fun buildReminderView(title: String, body: String, fireTime: String, emoji: String): LinearLayout {
+    val primary = Color.rgb(79, 55, 139)
+    val secondary = Color.rgb(200, 180, 255)
+    val surface = Color.rgb(255, 251, 254)
+    val visualBg = Color.rgb(234, 221, 255)
 
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
-      gravity = Gravity.CENTER
-      setPadding(44, 56, 44, 56)
+      gravity = Gravity.CENTER_HORIZONTAL
+      setPadding(dp(24), dp(42), dp(24), dp(42))
       setBackgroundColor(surface)
       layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
@@ -65,56 +77,82 @@ class AlarmActivity : Activity() {
     val appName = TextView(this).apply {
       text = "VizMinder"
       textSize = 34f
+      typeface = Typeface.DEFAULT
       gravity = Gravity.CENTER
-      setTextColor(0xFF1D1B20.toInt())
-      setPadding(0, 0, 0, 48)
+      setTextColor(Color.rgb(29, 27, 32))
     }
+    root.addView(appName, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
 
-    val titleView = TextView(this).apply {
-      text = title
+    val visual = TextView(this).apply {
+      text = emoji
+      textSize = 48f
+      gravity = Gravity.CENTER
+      background = rounded(visualBg, dp(30))
+      includeFontPadding = false
+    }
+    root.addView(visual, LinearLayout.LayoutParams(dp(132), dp(132)).apply { topMargin = dp(18) })
+
+    val spacerTop = TextView(this)
+    root.addView(spacerTop, LinearLayout.LayoutParams(1, 0, 1f))
+
+    val time = TextView(this).apply {
+      text = "It is ${formatAlarmTime(fireTime)} now !"
+      textSize = 38f
+      typeface = Typeface.DEFAULT_BOLD
+      gravity = Gravity.CENTER
+      setTextColor(primary)
+    }
+    root.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+    val question = TextView(this).apply {
+      text = "Have you completed\n$title?"
       textSize = 30f
+      typeface = Typeface.DEFAULT_BOLD
       gravity = Gravity.CENTER
       setTextColor(primary)
-      setPadding(0, 0, 0, 18)
+      setPadding(0, dp(26), 0, dp(10))
+    }
+    root.addView(question, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+    if (body.isNotBlank()) {
+      val bodyView = TextView(this).apply {
+        text = body
+        textSize = 16f
+        gravity = Gravity.CENTER
+        setTextColor(Color.rgb(73, 69, 79))
+        setPadding(dp(18), 0, dp(18), 0)
+      }
+      root.addView(bodyView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
-    val bodyView = TextView(this).apply {
-      text = body
-      textSize = 22f
-      gravity = Gravity.CENTER
-      setTextColor(primary)
-      setPadding(0, 0, 0, 72)
-    }
+    val spacerBottom = TextView(this)
+    root.addView(spacerBottom, LinearLayout.LayoutParams(1, 0, 1f))
 
     val actionRow = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER
     }
-
-    val noButton = Button(this).apply {
-      text = "No"
-      textSize = 22f
+    val noButton = TextView(this).apply {
+      text = "×"
+      textSize = 52f
+      gravity = Gravity.CENTER
+      setTextColor(Color.WHITE)
+      background = oval(primary)
       setOnClickListener { finishAlarm() }
     }
-
-    val yesButton = Button(this).apply {
-      text = "Yes"
-      textSize = 22f
+    val yesButton = TextView(this).apply {
+      text = "✓"
+      textSize = 52f
+      gravity = Gravity.CENTER
+      setTextColor(Color.WHITE)
+      background = oval(secondary)
       setOnClickListener { finishAlarm() }
     }
+    actionRow.addView(noButton, LinearLayout.LayoutParams(dp(132), dp(132)).apply { marginEnd = dp(42) })
+    actionRow.addView(yesButton, LinearLayout.LayoutParams(dp(132), dp(132)).apply { marginStart = dp(42) })
+    root.addView(actionRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-    val buttonParams = LinearLayout.LayoutParams(160, 160).apply {
-      marginStart = 24
-      marginEnd = 24
-    }
-    actionRow.addView(noButton, buttonParams)
-    actionRow.addView(yesButton, buttonParams)
-
-    root.addView(appName)
-    root.addView(titleView)
-    root.addView(bodyView)
-    root.addView(actionRow)
-    setContentView(root)
+    return root
   }
 
   private fun finishAlarm() {
@@ -143,6 +181,31 @@ class AlarmActivity : Activity() {
         isLooping = true
       }
       play()
+    }
+  }
+
+  private fun formatAlarmTime(fireTime: String): String {
+    return try {
+      DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(fireTime))
+    } catch (_: Exception) {
+      DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.now())
+    }
+  }
+
+  private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+  private fun rounded(color: Int, radius: Int): GradientDrawable {
+    return GradientDrawable().apply {
+      shape = GradientDrawable.RECTANGLE
+      setColor(color)
+      cornerRadius = radius.toFloat()
+    }
+  }
+
+  private fun oval(color: Int): GradientDrawable {
+    return GradientDrawable().apply {
+      shape = GradientDrawable.OVAL
+      setColor(color)
     }
   }
 }
