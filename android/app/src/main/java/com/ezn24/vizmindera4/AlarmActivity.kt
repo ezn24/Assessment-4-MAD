@@ -7,8 +7,10 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.media.Ringtone
-import android.media.RingtoneManager
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -23,7 +25,7 @@ import java.time.format.DateTimeFormatter
 
 class AlarmActivity : Activity() {
   private lateinit var reminderId: String
-  private var ringtonePlayer: Ringtone? = null
+  private var mediaPlayer: MediaPlayer? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -56,8 +58,8 @@ class AlarmActivity : Activity() {
         WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
         WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
     )
-    playAlarmSound(ringtone)
     setContentView(buildReminderView(title, body, fireTime, emoji))
+    playAlarmSound(ringtone)
   }
 
   private fun buildReminderView(title: String, body: String, fireTime: String, emoji: String): LinearLayout {
@@ -92,8 +94,7 @@ class AlarmActivity : Activity() {
     }
     root.addView(visual, LinearLayout.LayoutParams(dp(132), dp(132)).apply { topMargin = dp(18) })
 
-    val spacerTop = TextView(this)
-    root.addView(spacerTop, LinearLayout.LayoutParams(1, 0, 1f))
+    root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
 
     val time = TextView(this).apply {
       text = "It is ${formatAlarmTime(fireTime)} now !"
@@ -125,15 +126,14 @@ class AlarmActivity : Activity() {
       root.addView(bodyView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
-    val spacerBottom = TextView(this)
-    root.addView(spacerBottom, LinearLayout.LayoutParams(1, 0, 1f))
+    root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
 
     val actionRow = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER
     }
     val noButton = TextView(this).apply {
-      text = "×"
+      text = "\u00D7"
       textSize = 52f
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
@@ -141,7 +141,7 @@ class AlarmActivity : Activity() {
       setOnClickListener { finishAlarm() }
     }
     val yesButton = TextView(this).apply {
-      text = "✓"
+      text = "\u2713"
       textSize = 52f
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
@@ -158,30 +158,71 @@ class AlarmActivity : Activity() {
   private fun finishAlarm() {
     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.cancel(reminderId.hashCode())
-    ringtonePlayer?.stop()
-    ringtonePlayer = null
+    stopAlarmSound()
     finishAndRemoveTask()
   }
 
   override fun onDestroy() {
-    ringtonePlayer?.stop()
-    ringtonePlayer = null
+    stopAlarmSound()
     super.onDestroy()
   }
 
   private fun playAlarmSound(ringtone: String) {
     if (ringtone == "silent") return
-    val uri = when (ringtone) {
+    requestAlarmAudioFocus()
+    val candidates = soundCandidates(ringtone)
+    for (uri in candidates) {
+      if (tryPlay(uri)) return
+    }
+  }
+
+  private fun tryPlay(uri: Uri): Boolean {
+    return try {
+      val player = MediaPlayer().apply {
+        setAudioAttributes(
+          AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        )
+        setDataSource(this@AlarmActivity, uri)
+        isLooping = true
+        prepare()
+        start()
+      }
+      mediaPlayer = player
+      true
+    } catch (_: Exception) {
+      false
+    }
+  }
+
+  private fun stopAlarmSound() {
+    mediaPlayer?.run {
+      if (isPlaying) stop()
+      release()
+    }
+    mediaPlayer = null
+  }
+
+  private fun requestAlarmAudioFocus() {
+    val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    @Suppress("DEPRECATION")
+    audioManager.requestAudioFocus(null, AudioManager.STREAM_ALARM, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+  }
+
+  private fun soundCandidates(ringtone: String): List<Uri> {
+    val selected = when (ringtone) {
       "notification" -> Settings.System.DEFAULT_NOTIFICATION_URI
       "ringtone" -> Settings.System.DEFAULT_RINGTONE_URI
       else -> Settings.System.DEFAULT_ALARM_ALERT_URI
     }
-    ringtonePlayer = RingtoneManager.getRingtone(this, uri)?.apply {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        isLooping = true
-      }
-      play()
-    }
+    return listOf(
+      selected,
+      Settings.System.DEFAULT_ALARM_ALERT_URI,
+      Settings.System.DEFAULT_RINGTONE_URI,
+      Settings.System.DEFAULT_NOTIFICATION_URI
+    ).distinct()
   }
 
   private fun formatAlarmTime(fireTime: String): String {
