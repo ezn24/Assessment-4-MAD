@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.media.AudioAttributes
 import android.os.Build
+import java.util.Calendar
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
@@ -17,6 +18,8 @@ class AlarmReceiver : BroadcastReceiver() {
     val reminderId = intent.getStringExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID) ?: "reminder"
     val title = intent.getStringExtra(AlarmSchedulerModule.EXTRA_TITLE) ?: "VizMinder reminder"
     val body = intent.getStringExtra(AlarmSchedulerModule.EXTRA_BODY) ?: "Time to check this visual reminder."
+    val repeatDaily = intent.getBooleanExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, false)
+    val ringtone = intent.getStringExtra(AlarmSchedulerModule.EXTRA_RINGTONE) ?: "alarm"
 
     ensureChannel(context)
 
@@ -25,6 +28,8 @@ class AlarmReceiver : BroadcastReceiver() {
       putExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID, reminderId)
       putExtra(AlarmSchedulerModule.EXTRA_TITLE, title)
       putExtra(AlarmSchedulerModule.EXTRA_BODY, body)
+      putExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, repeatDaily)
+      putExtra(AlarmSchedulerModule.EXTRA_RINGTONE, ringtone)
     }
     val fullScreenIntent = PendingIntent.getActivity(
       context,
@@ -49,6 +54,47 @@ class AlarmReceiver : BroadcastReceiver() {
 
     NotificationManagerCompat.from(context).notify(reminderId.hashCode(), notification)
     context.startActivity(alarmIntent)
+    if (repeatDaily) {
+      scheduleNextDailyAlarm(context, reminderId, title, body, ringtone)
+    }
+  }
+
+  private fun scheduleNextDailyAlarm(context: Context, reminderId: String, title: String, body: String, ringtone: String) {
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+    val next = Calendar.getInstance().apply {
+      timeInMillis = System.currentTimeMillis()
+      add(Calendar.DATE, 1)
+    }.timeInMillis
+
+    val receiverIntent = Intent(context, AlarmReceiver::class.java).apply {
+      action = AlarmSchedulerModule.ACTION_FIRE_ALARM
+      putExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID, reminderId)
+      putExtra(AlarmSchedulerModule.EXTRA_TITLE, title)
+      putExtra(AlarmSchedulerModule.EXTRA_BODY, body)
+      putExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, true)
+      putExtra(AlarmSchedulerModule.EXTRA_RINGTONE, ringtone)
+    }
+    val operation = PendingIntent.getBroadcast(
+      context,
+      reminderId.hashCode(),
+      receiverIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+    val showIntent = Intent(context, AlarmActivity::class.java).apply {
+      flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+      putExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID, reminderId)
+      putExtra(AlarmSchedulerModule.EXTRA_TITLE, title)
+      putExtra(AlarmSchedulerModule.EXTRA_BODY, body)
+      putExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, true)
+      putExtra(AlarmSchedulerModule.EXTRA_RINGTONE, ringtone)
+    }
+    val showOperation = PendingIntent.getActivity(
+      context,
+      "show-$reminderId".hashCode(),
+      showIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+    alarmManager.setAlarmClock(android.app.AlarmManager.AlarmClockInfo(next, showOperation), operation)
   }
 
   private fun ensureChannel(context: Context) {

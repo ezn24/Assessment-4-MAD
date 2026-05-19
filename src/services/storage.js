@@ -19,6 +19,10 @@ export async function getDatabase() {
       icon TEXT,
       imageUri TEXT,
       important INTEGER NOT NULL DEFAULT 0,
+      repeat INTEGER NOT NULL DEFAULT 0,
+      timeSet INTEGER NOT NULL DEFAULT 1,
+      hasDate INTEGER NOT NULL DEFAULT 1,
+      ringtone TEXT NOT NULL DEFAULT 'alarm',
       completed INTEGER NOT NULL DEFAULT 0,
       latitude REAL,
       longitude REAL,
@@ -27,7 +31,24 @@ export async function getDatabase() {
       updatedAt TEXT NOT NULL
     );
   `);
+  await migrateReminderColumns(db);
   return db;
+}
+
+async function migrateReminderColumns(db) {
+  const columns = await db.getAllAsync("PRAGMA table_info(reminders)");
+  const names = new Set(columns.map((column) => column.name));
+  const migrations = [
+    ["repeat", "ALTER TABLE reminders ADD COLUMN repeat INTEGER NOT NULL DEFAULT 0"],
+    ["timeSet", "ALTER TABLE reminders ADD COLUMN timeSet INTEGER NOT NULL DEFAULT 1"],
+    ["hasDate", "ALTER TABLE reminders ADD COLUMN hasDate INTEGER NOT NULL DEFAULT 1"],
+    ["ringtone", "ALTER TABLE reminders ADD COLUMN ringtone TEXT NOT NULL DEFAULT 'alarm'"]
+  ];
+  for (const [name, statement] of migrations) {
+    if (!names.has(name)) {
+      await db.execAsync(statement);
+    }
+  }
 }
 
 export async function listReminders() {
@@ -41,8 +62,8 @@ export async function upsertReminder(reminder) {
   const item = serializeReminder({ ...reminder, updatedAt: new Date().toISOString() });
   await db.runAsync(
     `INSERT OR REPLACE INTO reminders
-    (id, title, description, scheduledAt, visualType, emoji, icon, imageUri, important, completed, latitude, longitude, locationLabel, notificationId, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    (id, title, description, scheduledAt, visualType, emoji, icon, imageUri, important, repeat, timeSet, hasDate, ringtone, completed, latitude, longitude, locationLabel, notificationId, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.id,
       item.title,
@@ -53,6 +74,10 @@ export async function upsertReminder(reminder) {
       item.icon,
       item.imageUri,
       item.important,
+      item.repeat,
+      item.timeSet,
+      item.hasDate,
+      item.ringtone,
       item.completed,
       item.latitude,
       item.longitude,

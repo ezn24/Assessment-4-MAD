@@ -19,6 +19,7 @@ function normalizeReminder(reminder) {
     timeSet: reminder.timeSet !== false,
     hasDate: reminder.hasDate !== false,
     repeat: Boolean(reminder.repeat),
+    ringtone: reminder.ringtone || "alarm",
     important: Boolean(reminder.important),
     completed: Boolean(reminder.completed),
     streak: reminder.streak || 0,

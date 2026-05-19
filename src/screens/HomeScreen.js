@@ -11,7 +11,6 @@ import {
   useColorScheme,
   View
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import ConfettiCannon from "react-native-confetti-cannon";
 import * as Animatable from "react-native-animatable";
 // expo-haptics adds native tactile feedback to completion, toggle, and delete actions.
@@ -44,7 +43,17 @@ const SUCCESS = "#146C2E";
 const DATE_DISPLAY_FORMAT = "yyyy/MM/dd";
 const DATE_INPUT_PLACEHOLDER = "yyyy/mm/dd";
 const REMINDER_CHANNEL_ID = "vizminder-a4-reminders";
-const SETTINGS_STORAGE_KEY = "vizminder-a4-settings";
+const DEFAULT_SETTINGS = {
+  themeMode: "system",
+  followSystemColors: true,
+  showReminderDebugButton: false
+};
+const RINGTONE_OPTIONS = [
+  ["alarm", "System alarm"],
+  ["notification", "Notification tone"],
+  ["ringtone", "Phone ringtone"],
+  ["silent", "Silent visual only"]
+];
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -120,6 +129,7 @@ function createDraftReminder() {
     timeSet: true,
     hasDate: false,
     repeat: false,
+    ringtone: "alarm",
     important: true,
     completed: false,
     imageUri: null,
@@ -127,8 +137,8 @@ function createDraftReminder() {
   };
 }
 
-export default function HomeScreen() {
-  const { reminders, markedDates, completeReminder, updateReminder, addReminder, deleteReminder, resetPrototype } = useReminders();
+export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, onUpdateSettings }) {
+  const { reminders, markedDates, updateReminder, addReminder, deleteReminder, resetPrototype } = useReminders();
   const systemScheme = useColorScheme();
   const confettiRef = useRef(null);
   const remindersRef = useRef(reminders);
@@ -138,11 +148,7 @@ export default function HomeScreen() {
   const [reminding, setReminding] = useState(null);
   const [message, setMessage] = useState("");
   const [celebrating, setCelebrating] = useState(false);
-  const [settings, setSettings] = useState({
-    themeMode: "system",
-    followSystemColors: true,
-    showReminderDebugButton: false
-  });
+  const settings = { ...DEFAULT_SETTINGS, ...appSettings };
   const activeScheme = settings.themeMode === "system" ? systemScheme : settings.themeMode;
   const isDark = activeScheme === "dark";
 
@@ -154,22 +160,8 @@ export default function HomeScreen() {
     remindersRef.current = reminders;
   }, [reminders]);
 
-  useEffect(() => {
-    AsyncStorage.getItem(SETTINGS_STORAGE_KEY)
-      .then((value) => {
-        if (value) {
-          setSettings((current) => ({ ...current, ...JSON.parse(value) }));
-        }
-      })
-      .catch(() => {});
-  }, []);
-
   const updateSettings = (patch) => {
-    setSettings((current) => {
-      const next = { ...current, ...patch };
-      AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
+    onUpdateSettings?.(patch);
   };
 
   useEffect(() => {
@@ -197,12 +189,30 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const handleComplete = (reminder) => {
+  const handleComplete = async (reminder) => {
     if (reminder.notificationId) {
       Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
     }
     cancelNativeAlarm(reminder.id).catch(() => {});
-    completeReminder(reminder.id);
+    if (reminder.repeat) {
+      const nextReminder = {
+        ...reminder,
+        scheduledAt: getNextDailyDate(reminder.scheduledAt).toISOString(),
+        completed: false,
+        completedAt: new Date().toISOString(),
+        streak: (reminder.streak || 0) + 1
+      };
+      const notificationId = await scheduleReminderNotification(nextReminder);
+      await scheduleNativeAlarm({ ...nextReminder, notificationId }).catch(() => false);
+      updateReminder(reminder.id, { ...nextReminder, notificationId });
+    } else {
+      updateReminder(reminder.id, {
+        completed: true,
+        completedAt: new Date().toISOString(),
+        notificationId: null,
+        streak: (reminder.streak || 0) + 1
+      });
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     if (reminder.important) {
       setCelebrating(true);
@@ -275,7 +285,9 @@ export default function HomeScreen() {
                   ...editing,
                   id: `reminder-${Date.now()}`,
                   title: editing.title.trim(),
-                  description: editing.description.trim()
+                  description: editing.description.trim(),
+                  completed: false,
+                  completedAt: null
                 };
                 const notificationId = await scheduleReminderNotification(reminder);
                 await scheduleNativeAlarm(reminder).catch(() => false);
@@ -285,12 +297,18 @@ export default function HomeScreen() {
                 if (editing.notificationId) {
                   await Notifications.cancelScheduledNotificationAsync(editing.notificationId).catch(() => {});
                 }
-                const notificationId = await scheduleReminderNotification(editing);
-                await scheduleNativeAlarm({ ...editing, notificationId }).catch(() => false);
-                updateReminder(editing.id, {
+                await cancelNativeAlarm(editing.id).catch(() => false);
+                const savedReminder = {
                   ...editing,
                   title: editing.title.trim(),
                   description: editing.description.trim(),
+                  completed: false,
+                  completedAt: null
+                };
+                const notificationId = await scheduleReminderNotification(savedReminder);
+                await scheduleNativeAlarm({ ...savedReminder, notificationId }).catch(() => false);
+                updateReminder(editing.id, {
+                  ...savedReminder,
                   notificationId
                 });
                 setMessage(notificationId ? "Reminder updated and notification scheduled." : "Reminder updated. Notification permission is needed for alerts.");
@@ -328,7 +346,6 @@ export default function HomeScreen() {
                   }}
                   onToggle={async (reminder, completed) =>
                     {
-                      Haptics.selectionAsync().catch(() => {});
                       if (reminder.notificationId) {
                         await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
                       }
@@ -336,10 +353,6 @@ export default function HomeScreen() {
                       const notificationId = completed ? null : await scheduleReminderNotification({ ...reminder, completed: false });
                       if (!completed) {
                         await scheduleNativeAlarm({ ...reminder, completed: false }).catch(() => false);
-                      }
-                      if (completed && reminder.important) {
-                        setCelebrating(true);
-                        requestAnimationFrame(() => confettiRef.current?.start());
                       }
                       updateReminder(reminder.id, {
                         completed,
@@ -456,7 +469,7 @@ function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButt
               </View>
               <View style={styles.taskCopy}>
                 <Text style={styles.taskTime}>
-                  {format(parseISO(reminder.scheduledAt), "h:mm a")} ¡¤ {getCountdownLabel(reminder.scheduledAt)}
+                  {format(parseISO(reminder.scheduledAt), "h:mm a")} Â· {getCountdownLabel(reminder.scheduledAt)}
                 </Text>
                 <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
                 {reminder.description ? <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>{reminder.description}</Text> : null}
@@ -467,7 +480,7 @@ function HomeTab({ reminders, markedDates, onTestReminder, showReminderDebugButt
                   <MaterialCommunityIcons name="play-circle-outline" size={22} color={PURPLE} />
                 </Pressable>
               ) : null}
-                <Switch value={reminder.completed} color={PURPLE} onValueChange={(value) => onToggle(reminder, value)} />
+                <Switch value={!reminder.completed} color={PURPLE} onValueChange={(value) => onToggle(reminder, !value)} />
               </View>
             </Pressable>
             </Swipeable>
@@ -541,7 +554,7 @@ function ScheduleTab({ markedDates, reminders, isDark, onEdit }) {
                 <View style={styles.scheduleCopy}>
                   <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
                   <Text style={styles.taskTime}>
-                    {format(parseISO(reminder.scheduledAt), "h:mm a")} ¡¤ {getCountdownLabel(reminder.scheduledAt)}
+                    {format(parseISO(reminder.scheduledAt), "h:mm a")} Â· {getCountdownLabel(reminder.scheduledAt)}
                   </Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={MUTED} />
@@ -649,6 +662,17 @@ function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSav
     }
     setDateOpen(true);
   };
+  const openRingtonePicker = () => {
+    Alert.alert(
+      "Reminder sound",
+      "Choose the sound used by the full-screen alarm.",
+      RINGTONE_OPTIONS.map(([value, label]) => ({
+        text: label,
+        onPress: () => onUpdate({ ringtone: value })
+      })).concat([{ text: "Cancel", style: "cancel" }])
+    );
+  };
+  const ringtoneLabel = RINGTONE_OPTIONS.find(([value]) => value === reminder.ringtone)?.[1] || "System alarm";
 
   return (
     <Animatable.View animation="fadeInUp" duration={240} style={[styles.screen, isDark && styles.screenDark]} useNativeDriver>
@@ -685,6 +709,19 @@ function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSav
           onPress={openDatePicker}
           onClear={() => onUpdate({ hasDate: false })}
         />
+        <EditField
+          isDark={isDark}
+          label="Sound"
+          value={ringtoneLabel}
+          onPress={openRingtonePicker}
+        />
+        <View style={[styles.importantRow, isDark && styles.cardOnDark]}>
+          <View style={styles.settingsCopy}>
+            <Text style={[styles.editLabel, isDark && styles.textOnDark]}>Repeat daily</Text>
+            <Text style={[styles.importantHelp, isDark && styles.mutedOnDark]}>Remind again every day at this time.</Text>
+          </View>
+          <Switch value={Boolean(reminder.repeat)} color={PURPLE} onValueChange={(repeat) => onUpdate({ repeat })} />
+        </View>
         <View style={[styles.importantRow, isDark && styles.cardOnDark]}>
           <View>
             <Text style={[styles.editLabel, isDark && styles.textOnDark]}>Important reminder</Text>
@@ -770,15 +807,19 @@ function EditField({ label, value, isDark = false, onPress, onClear }) {
       <Text style={[styles.editLabel, isDark && styles.textOnDark]}>{label}</Text>
       <View style={[styles.editValue, isDark && styles.inputOnDark]}>
         <Text style={[styles.editValueText, isDark && styles.mutedOnDark]}>{value}</Text>
-        <Pressable
-          hitSlop={10}
-          onPress={(event) => {
-            event.stopPropagation();
-            onClear?.();
-          }}
-        >
-          <MaterialCommunityIcons name="close-circle-outline" size={24} color="#56515E" />
-        </Pressable>
+        {onClear ? (
+          <Pressable
+            hitSlop={10}
+            onPress={(event) => {
+              event.stopPropagation();
+              onClear();
+            }}
+          >
+            <MaterialCommunityIcons name="close-circle-outline" size={24} color="#56515E" />
+          </Pressable>
+        ) : (
+          <MaterialCommunityIcons name="chevron-right" size={22} color="#56515E" />
+        )}
       </View>
     </Pressable>
   );
@@ -1209,6 +1250,16 @@ function getOneShotReminderDate(reminder, scheduled) {
     return scheduled;
   }
 
+  const next = new Date();
+  next.setHours(scheduled.getHours(), scheduled.getMinutes(), 0, 0);
+  if (next <= new Date()) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next;
+}
+
+function getNextDailyDate(isoDate) {
+  const scheduled = parseISO(isoDate);
   const next = new Date();
   next.setHours(scheduled.getHours(), scheduled.getMinutes(), 0, 0);
   if (next <= new Date()) {
