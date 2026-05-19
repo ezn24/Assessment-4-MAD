@@ -20,7 +20,7 @@ import * as ImagePicker from "expo-image-picker";
 // expo-notifications schedules real local notifications when reminder time arrives.
 import * as Notifications from "expo-notifications";
 // Native date/time picker is kept as an escape hatch beside the custom Material-style picker.
-import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
 import { format, formatDistanceStrict, isValid, parseISO, set } from "date-fns";
@@ -593,6 +593,64 @@ function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSav
   const currentScheduled = isValid(parseISO(reminder.scheduledAt)) ? parseISO(reminder.scheduledAt) : new Date();
   const timePickerValue = reminder.timeSet === false ? new Date() : currentScheduled;
   const datePickerValue = reminder.hasDate === false ? new Date() : currentScheduled;
+  const openTimePicker = () => {
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: timePickerValue,
+        mode: "time",
+        display: "clock",
+        design: "material",
+        initialInputMode: "default",
+        is24Hour: true,
+        positiveButton: { label: "OK", textColor: PURPLE },
+        negativeButton: { label: "Cancel", textColor: MUTED },
+        onChange: (event, selectedDate) => {
+          if (event.type === "set" && selectedDate) {
+            const nextDate = set(currentScheduled, {
+              hours: selectedDate.getHours(),
+              minutes: selectedDate.getMinutes(),
+              seconds: 0,
+              milliseconds: 0
+            });
+            onUpdate({ scheduledAt: nextDate.toISOString(), timeSet: true });
+          }
+        }
+      });
+      return;
+    }
+    setTimeOpen(true);
+  };
+  const openDatePicker = () => {
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: datePickerValue,
+        mode: "date",
+        display: "calendar",
+        design: "material",
+        initialInputMode: "default",
+        positiveButton: { label: "OK", textColor: PURPLE },
+        negativeButton: { label: "Cancel", textColor: MUTED },
+        neutralButton: { label: "Clear", textColor: MUTED },
+        onChange: (event, selectedDate) => {
+          if (event.type === "neutralButtonPressed") {
+            onUpdate({ hasDate: false });
+            return;
+          }
+          if (event.type === "set" && selectedDate) {
+            const nextDate = set(selectedDate, {
+              hours: currentScheduled.getHours(),
+              minutes: currentScheduled.getMinutes(),
+              seconds: 0,
+              milliseconds: 0
+            });
+            onUpdate({ scheduledAt: nextDate.toISOString(), hasDate: true });
+          }
+        }
+      });
+      return;
+    }
+    setDateOpen(true);
+  };
 
   return (
     <Animatable.View animation="fadeInUp" duration={240} style={[styles.screen, isDark && styles.screenDark]} useNativeDriver>
@@ -617,13 +675,13 @@ function TaskEditScreen({ reminder, mode, isDark, onUpdate, onAttachImage, onSav
         <EditField
           label="Time"
           value={reminder.timeSet === false ? "Required" : format(parseISO(reminder.scheduledAt), "HH:mm")}
-          onPress={() => setTimeOpen(true)}
+          onPress={openTimePicker}
           onClear={() => onUpdate({ timeSet: false })}
         />
         <EditField
           label="Date"
           value={reminder.hasDate === false ? "Optional" : format(parseISO(reminder.scheduledAt), DATE_DISPLAY_FORMAT)}
-          onPress={() => setDateOpen(true)}
+          onPress={openDatePicker}
           onClear={() => onUpdate({ hasDate: false })}
         />
         <View style={styles.importantRow}>
@@ -775,7 +833,10 @@ function AccountTab({ completedCount, isDark }) {
 }
 
 function SettingsTab({ settings, onUpdateSettings, isDark, onReset, onMessage }) {
+  const [settingsPage, setSettingsPage] = useState("main");
   const items = [
+    ["palette-outline", "Theme", "Light, dark, system, and Material color options.", () => setSettingsPage("theme")],
+    ["tune-vertical", "Advanced", "Debug controls and native alarm notes.", () => setSettingsPage("advanced")],
     ["message-outline", "Notification", "Grant permission and send a test alert.", async () => {
       const granted = await ensureNotificationPermission();
       if (!granted) {
@@ -801,67 +862,97 @@ function SettingsTab({ settings, onUpdateSettings, isDark, onReset, onMessage })
     ["restart", "Reset Reminders", "Clear all reminders on this device.", onReset]
   ];
 
+  if (settingsPage === "theme") {
+    return (
+      <View style={[styles.screen, isDark && styles.screenDark]}>
+        <ScreenTitle>Theme</ScreenTitle>
+        <ScrollView contentContainerStyle={styles.settingsContent}>
+          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={MUTED} />
+            <Text style={styles.settingsTitle}>Settings</Text>
+          </Pressable>
+          <View style={[styles.settingsPanel, isDark && styles.materialCardDark]}>
+            <Text style={styles.sectionTitle}>Theme mode</Text>
+            <View style={styles.segmentedControl}>
+              {[
+                ["light", "Light"],
+                ["dark", "Dark"],
+                ["system", "System"]
+              ].map(([mode, label]) => (
+                <Pressable
+                  key={mode}
+                  style={[styles.segmentButton, settings.themeMode === mode && styles.segmentButtonActive]}
+                  onPress={() => onUpdateSettings({ themeMode: mode })}
+                >
+                  <Text style={[styles.segmentText, settings.themeMode === mode && styles.segmentTextActive]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.settingsSwitchRow}>
+              <View style={styles.settingsCopy}>
+                <Text style={styles.settingsTitle}>Follow system Material colors</Text>
+                <Text style={styles.settingsDescription}>
+                  {settings.followSystemColors ? "Use system color preference when available." : "Use VizMinder purple palette."}
+                </Text>
+              </View>
+              <Switch value={settings.followSystemColors} color={PURPLE} onValueChange={(value) => onUpdateSettings({ followSystemColors: value })} />
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (settingsPage === "advanced") {
+    return (
+      <View style={[styles.screen, isDark && styles.screenDark]}>
+        <ScreenTitle>Advanced</ScreenTitle>
+        <ScrollView contentContainerStyle={styles.settingsContent}>
+          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={MUTED} />
+            <Text style={styles.settingsTitle}>Settings</Text>
+          </Pressable>
+          <View style={[styles.settingsPanel, isDark && styles.materialCardDark]}>
+            <View style={styles.settingsSwitchRow}>
+              <View style={styles.settingsCopy}>
+                <Text style={styles.settingsTitle}>Reminder debug button</Text>
+                <Text style={styles.settingsDescription}>Show the Home test button for the Yes/No prompt.</Text>
+              </View>
+              <Switch
+                value={settings.showReminderDebugButton}
+                color={PURPLE}
+                onValueChange={(value) => onUpdateSettings({ showReminderDebugButton: value })}
+              />
+            </View>
+            <Text style={styles.settingsDescription}>
+              The installed Android APK uses native AlarmManager and a lock-screen Activity for full-screen visual reminders. Android may still require notification and exact alarm permission.
+            </Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.screen, isDark && styles.screenDark]}>
       <ScreenTitle>Settings</ScreenTitle>
-      <View style={[styles.settingsPanel, isDark && styles.materialCardDark]}>
-        <Text style={styles.sectionTitle}>Theme</Text>
-        <View style={styles.segmentedControl}>
-          {[
-            ["light", "Light"],
-            ["dark", "Dark"],
-            ["system", "System"]
-          ].map(([mode, label]) => (
-            <Pressable
-              key={mode}
-              style={[styles.segmentButton, settings.themeMode === mode && styles.segmentButtonActive]}
-              onPress={() => onUpdateSettings({ themeMode: mode })}
-            >
-              <Text style={[styles.segmentText, settings.themeMode === mode && styles.segmentTextActive]}>{label}</Text>
+      <ScrollView contentContainerStyle={styles.settingsContent}>
+        <View style={[styles.settingsList, isDark && styles.materialCardDark]}>
+          {items.map(([icon, title, copy, action]) => (
+            <Pressable key={title} onPress={action}>
+              <View style={styles.settingsRow}>
+                <MaterialCommunityIcons name={icon} size={24} color="#4E4956" />
+                <View style={styles.settingsCopy}>
+                  <Text style={styles.settingsTitle}>{title}</Text>
+                  <Text style={styles.settingsDescription}>{copy}</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={22} color={MUTED} />
+              </View>
+              <Divider style={styles.settingsDivider} />
             </Pressable>
           ))}
         </View>
-        <View style={styles.settingsSwitchRow}>
-          <View style={styles.settingsCopy}>
-            <Text style={styles.settingsTitle}>Follow system Material colors</Text>
-            <Text style={styles.settingsDescription}>
-              {settings.followSystemColors ? "Use system color preference when available." : "Use VizMinder purple palette."}
-            </Text>
-          </View>
-          <Switch value={settings.followSystemColors} color={PURPLE} onValueChange={(value) => onUpdateSettings({ followSystemColors: value })} />
-        </View>
-      </View>
-      <View style={[styles.settingsPanel, isDark && styles.materialCardDark]}>
-        <Text style={styles.sectionTitle}>Advanced</Text>
-        <View style={styles.settingsSwitchRow}>
-          <View style={styles.settingsCopy}>
-            <Text style={styles.settingsTitle}>Reminder debug button</Text>
-            <Text style={styles.settingsDescription}>Show the Home test button for the Yes/No prompt.</Text>
-          </View>
-          <Switch
-            value={settings.showReminderDebugButton}
-            color={PURPLE}
-            onValueChange={(value) => onUpdateSettings({ showReminderDebugButton: value })}
-          />
-        </View>
-        <Text style={styles.settingsDescription}>
-          Full-screen lock-screen alarm UI needs a custom native Android activity/full-screen intent. This Expo APK uses high-priority lock-screen notifications and opens the Yes/No prompt after tapping the notification.
-        </Text>
-      </View>
-      <View style={[styles.settingsList, isDark && styles.materialCardDark]}>
-        {items.map(([icon, title, copy, action]) => (
-          <Pressable key={title} onPress={action}>
-            <View style={styles.settingsRow}>
-              <MaterialCommunityIcons name={icon} size={24} color="#4E4956" />
-              <View style={styles.settingsCopy}>
-                <Text style={styles.settingsTitle}>{title}</Text>
-                <Text style={styles.settingsDescription}>{copy}</Text>
-              </View>
-            </View>
-            <Divider style={styles.settingsDivider} />
-          </Pressable>
-        ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -1746,6 +1837,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginHorizontal: 16,
     overflow: "hidden"
+  },
+  settingsContent: {
+    paddingBottom: 104
+  },
+  backRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    minHeight: 44
   },
   settingsPanel: {
     backgroundColor: SURFACE,
