@@ -12,9 +12,9 @@ This version is intended to be installed as an APK, not run only in Expo Go. Nat
 - Schedule tab with month distribution and clickable reminder rows.
 - Daily repeat reminders and one-shot reminders.
 - Native Android full-screen alarm path using `AlarmManager`, full-screen notification intent, and a lock-screen Activity.
-- Firebase anonymous Authentication and Firestore sync when Firebase config is provided.
+- Firebase Authentication with anonymous fallback, email/password login, and Firestore sync.
 - SQLite local persistence for offline and app-restart safety.
-- Material 3 light, dark, system, and dynamic color settings.
+- Material 3 light/dark theme and optional dynamic color settings.
 - Image picker with camera/gallery menu.
 - Jest tests for reminder model behavior.
 
@@ -95,15 +95,27 @@ Copy-Item android\app\build\outputs\apk\release\app-release.apk build\vizminder-
 
 ## Firebase Setup
 
-The app works offline without Firebase values. With Firebase configured, it signs in anonymously and syncs reminders to Firestore.
+The app works offline without Firebase values. With Firebase configured, it supports anonymous fallback, email/password accounts, and Firestore reminder sync.
 
 Create a Firebase project, then enable:
 
 - Authentication: Anonymous provider.
+- Authentication: Email/Password provider.
 - Firestore Database.
 - Test Lab, if assessment evidence requires automated device testing.
 
-Set these values in `app.json` under `expo.extra`:
+Prefer environment variables instead of editing `app.json` directly. Copy `.env.example` to `.env` and fill:
+
+```env
+EXPO_PUBLIC_FIREBASE_API_KEY=
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+EXPO_PUBLIC_FIREBASE_APP_ID=
+```
+
+These map to `app.config.js`, then into `expo.extra`:
 
 ```json
 {
@@ -119,10 +131,31 @@ Set these values in `app.json` under `expo.extra`:
 Firestore path:
 
 ```text
-users/{anonymousUserId}/reminders/{reminderId}
+users/{firebaseUserId}/reminders/{reminderId}
 ```
 
-Do not commit production secrets. For a production project, move these values to an environment-driven config process.
+Do not commit production secrets. The `.env` file should stay local.
+
+### Email/Password Sign-In
+
+In Firebase Console:
+
+1. Open your Firebase project.
+2. Go to `Build > Authentication > Sign-in method`.
+3. Enable `Email/Password`.
+4. Build and install the APK.
+5. In the app, open `Account`, enter email/password, then press `Register` or `Login`.
+
+The app currently enforces this password rule before calling Firebase:
+
+- At least 8 characters.
+- At least 2 English letters.
+- At least 6 numbers.
+
+Troubleshooting:
+
+- `Firebase: Error (auth/operation-not-allowed)`: the provider is disabled in Firebase Console. Enable `Email/Password` for email login/register.
+- Firebase login works but sync fails: check Firestore rules and confirm the app is using the same `firebaseProjectId` as the Firebase Console project.
 
 ## Firebase Test Lab
 
