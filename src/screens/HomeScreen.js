@@ -4,12 +4,12 @@ import {
   BackHandler,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  useColorScheme,
   View
 } from "react-native";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -27,7 +27,14 @@ import { format, formatDistanceStrict, isValid, parseISO, set } from "date-fns";
 import { Calendar } from "react-native-calendars";
 import { Button, Divider, Snackbar, Switch, Text, TextInput } from "react-native-paper";
 import { useReminders } from "../hooks/useReminders";
-import { getFirebaseDebugInfo } from "../services/firebase";
+import {
+  fetchRemindersFromFirestore,
+  getFirebaseServices,
+  listenToAuthState,
+  loginWithEmail,
+  registerWithEmail,
+  signOutUser
+} from "../services/firebase";
 import { cancelNativeAlarm, scheduleNativeAlarm } from "../services/nativeAlarm";
 
 const PURPLE = "#4F378B";
@@ -45,9 +52,14 @@ const DATE_DISPLAY_FORMAT = "yyyy/MM/dd";
 const DATE_INPUT_PLACEHOLDER = "yyyy/mm/dd";
 const REMINDER_CHANNEL_ID = "vizminder-a4-reminders";
 const DEFAULT_SETTINGS = {
-  themeMode: "system",
+  themeMode: "light",
   followSystemColors: true,
-  showReminderDebugButton: false
+  showReminderDebugButton: false,
+  reminderNotifications: true,
+  notificationSound: true,
+  fullScreenAlerts: true,
+  followUpNotifications: true,
+  notificationVibration: true
 };
 const RINGTONE_OPTIONS = [
   ["alarm", "System alarm"],
@@ -55,6 +67,8 @@ const RINGTONE_OPTIONS = [
   ["ringtone", "Phone ringtone"],
   ["silent", "Silent visual only"]
 ];
+const FOLLOW_UP_COUNTS = [0, 1, 2, 3, 5, 10];
+const FOLLOW_UP_INTERVALS = [1, 3, 5, 10, 15, 30];
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -134,6 +148,7 @@ function getPalette(themeColors = {}, isDark = false) {
 }
 
 function createDraftReminder() {
+  const now = new Date().toISOString();
   return {
     id: `draft-${Date.now()}`,
     title: "",
@@ -142,10 +157,15 @@ function createDraftReminder() {
     visualType: "icon",
     icon: "bell-outline",
     emoji: "\u{1F514}",
-    scheduledAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    scheduledAt: now,
+    createdAt: now,
     timeSet: true,
     hasDate: false,
     repeat: false,
+    repeatUntil: null,
+    followUpEnabled: false,
+    followUpCount: 0,
+    followUpIntervalMinutes: 5,
     ringtone: "alarm",
     important: true,
     completed: false,
@@ -154,11 +174,11 @@ function createDraftReminder() {
   };
 }
 
-export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, onUpdateSettings, isDarkOverride = false, themeColors = {} }) {
-  const { reminders, markedDates, updateReminder, addReminder, deleteReminder, resetPrototype, loaded } = useReminders();
-  const systemScheme = useColorScheme();
+export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, onUpdateSettings, isDarkOverride = null, themeColors = {} }) {
+  const { reminders, markedDates, updateReminder, addReminder, deleteReminder, resetPrototype, refreshFromCloud, syncNow, loaded } = useReminders();
   const confettiRef = useRef(null);
   const remindersRef = useRef(reminders);
+  const lastCloudUserRef = useRef(null);
   const [tab, setTab] = useState("home");
   const [editing, setEditing] = useState(null);
   const [editMode, setEditMode] = useState("edit");
@@ -166,9 +186,10 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const [message, setMessage] = useState("");
   const [undoDelete, setUndoDelete] = useState(null);
   const [celebrating, setCelebrating] = useState(false);
+  const [authUser, setAuthUser] = useState(null);
   const settings = { ...DEFAULT_SETTINGS, ...appSettings };
-  const activeScheme = settings.themeMode === "system" ? systemScheme : settings.themeMode;
-  const isDark = isDarkOverride || activeScheme === "dark";
+  const activeScheme = settings.themeMode;
+  const isDark = typeof isDarkOverride === "boolean" ? isDarkOverride : activeScheme === "dark";
   const palette = useMemo(() => getPalette(themeColors, isDark), [themeColors, isDark]);
   const themedSurface = palette.surface;
 
@@ -180,8 +201,39 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     remindersRef.current = reminders;
   }, [reminders]);
 
+  useEffect(() => {
+    return listenToAuthState(setAuthUser);
+  }, []);
+
+  useEffect(() => {
+    if (!authUser || authUser.isAnonymous || authUser.uid === "offline-user" || authUser.uid === lastCloudUserRef.current) {
+      return;
+    }
+    lastCloudUserRef.current = authUser.uid;
+    refreshFromCloud(authUser.uid)
+      .then(() => setMessage("Cloud reminders downloaded."))
+      .catch((error) => setMessage(error.message || "Cloud download failed."));
+  }, [authUser, refreshFromCloud]);
+
   const updateSettings = (patch) => {
     onUpdateSettings?.(patch);
+  };
+
+  const scheduleReminderAlarms = async (reminder) => {
+    if (settings.reminderNotifications === false) {
+      return null;
+    }
+    const scheduledReminder = settings.followUpNotifications === false ? { ...reminder, followUpEnabled: false, followUpCount: 0 } : reminder;
+    const notificationId = await scheduleReminderNotification(scheduledReminder, settings);
+    if (Platform.OS === "android" && settings.fullScreenAlerts !== false) {
+      await scheduleNativeAlarm({
+        ...scheduledReminder,
+        notificationId,
+        notificationSound: settings.notificationSound !== false,
+        notificationVibration: settings.notificationVibration !== false
+      }).catch(() => false);
+    }
+    return notificationId;
   };
 
   useEffect(() => {
@@ -238,22 +290,27 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     };
   }, []);
 
-  const handleComplete = async (reminder) => {
+  const handlePromptResponse = async (reminder, completed) => {
     if (reminder.notificationId) {
       Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
     }
     cancelNativeAlarm(reminder.id).catch(() => {});
-    if (reminder.repeat) {
+    const followUpReminder = settings.followUpNotifications === false ? null : getNextFollowUpReminder(reminder);
+    if (followUpReminder) {
+      const notificationId = await scheduleReminderAlarms(followUpReminder);
+      updateReminder(reminder.id, { ...followUpReminder, notificationId });
+    } else if (reminder.repeat && isRepeatStillActive(reminder)) {
       const nextReminder = {
         ...reminder,
         scheduledAt: getNextDailyDate(reminder.scheduledAt).toISOString(),
         completed: false,
-        completedAt: new Date().toISOString(),
-        streak: (reminder.streak || 0) + 1
+        completedAt: completed ? new Date().toISOString() : reminder.completedAt || null,
+        streak: completed ? (reminder.streak || 0) + 1 : reminder.streak || 0
       };
-      const notificationId = await scheduleReminderNotification(nextReminder);
-      await scheduleNativeAlarm({ ...nextReminder, notificationId }).catch(() => false);
+      const notificationId = await scheduleReminderAlarms(nextReminder);
       updateReminder(reminder.id, { ...nextReminder, notificationId });
+    } else if (!completed) {
+      updateReminder(reminder.id, { notificationId: null });
     } else {
       updateReminder(reminder.id, {
         completed: true,
@@ -262,8 +319,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
         streak: (reminder.streak || 0) + 1
       });
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    if (reminder.important) {
+    Haptics.notificationAsync(completed ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    if (completed && reminder.important) {
       setCelebrating(true);
       requestAnimationFrame(() => confettiRef.current?.start());
     }
@@ -275,8 +332,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
       return;
     }
     const reminder = { ...undoDelete };
-    const notificationId = await scheduleReminderNotification(reminder);
-    await scheduleNativeAlarm({ ...reminder, notificationId }).catch(() => false);
+    const notificationId = await scheduleReminderAlarms(reminder);
     addReminder({ ...reminder, notificationId });
     setUndoDelete(null);
     setMessage("Reminder restored.");
@@ -346,7 +402,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
       >
         {reminding ? (
-          <ReminderPrompt reminder={activeReminder} isDark={isDark} palette={palette} onNo={() => setReminding(null)} onYes={() => handleComplete(activeReminder)} />
+          <ReminderPrompt reminder={activeReminder} isDark={isDark} palette={palette} onNo={() => handlePromptResponse(activeReminder, false)} onYes={() => handlePromptResponse(activeReminder, true)} />
         ) : editing ? (
           <TaskEditScreen
             reminder={editing}
@@ -387,10 +443,9 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   completed: false,
                   completedAt: null
                 };
-                const notificationId = await scheduleReminderNotification(reminder);
-                await scheduleNativeAlarm(reminder).catch(() => false);
+                const notificationId = await scheduleReminderAlarms(reminder);
                 addReminder({ ...reminder, notificationId });
-                setMessage(notificationId ? "Reminder saved and notification scheduled." : "Reminder saved. Notification permission is needed for alerts.");
+                setMessage(notificationId ? "Reminder saved and notification scheduled." : "Reminder saved.");
               } else {
                 if (editing.notificationId) {
                   await Notifications.cancelScheduledNotificationAsync(editing.notificationId).catch(() => {});
@@ -403,8 +458,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   completed: false,
                   completedAt: null
                 };
-                const notificationId = await scheduleReminderNotification(savedReminder);
-                await scheduleNativeAlarm({ ...savedReminder, notificationId }).catch(() => false);
+                const notificationId = await scheduleReminderAlarms(savedReminder);
                 updateReminder(editing.id, {
                   ...savedReminder,
                   notificationId
@@ -443,10 +497,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                         await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
                       }
                       await cancelNativeAlarm(reminder.id).catch(() => false);
-                      const notificationId = completed ? null : await scheduleReminderNotification({ ...reminder, completed: false });
-                      if (!completed) {
-                        await scheduleNativeAlarm({ ...reminder, completed: false }).catch(() => false);
-                      }
+                      const notificationId = completed ? null : await scheduleReminderAlarms({ ...reminder, completed: false });
                       updateReminder(reminder.id, {
                         completed,
                         completedAt: completed ? new Date().toISOString() : null,
@@ -474,7 +525,15 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   }}
                 />
               ) : tab === "account" ? (
-                <AccountTab completedCount={completedCount} isDark={isDark} palette={palette} />
+                <AccountTab
+                  reminders={reminders}
+                  authUser={authUser}
+                  completedCount={completedCount}
+                  isDark={isDark}
+                  palette={palette}
+                  onSyncNow={syncNow}
+                  onMessage={setMessage}
+                />
               ) : (
                 <SettingsTab
                   settings={settings}
@@ -617,13 +676,14 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
 function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
   const colors = palette || getPalette({}, isDark);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const selectedReminders = reminders.filter(
-    (reminder) => reminder.hasDate !== false && format(parseISO(reminder.scheduledAt), "yyyy-MM-dd") === selectedDate
-  );
+  const [visibleMonth, setVisibleMonth] = useState(format(new Date(), "yyyy-MM"));
+  const selectedReminders = reminders.filter((reminder) => shouldShowReminderOnDate(reminder, selectedDate));
+  const scheduleMarkedDates = buildScheduleMarkedDates(reminders, visibleMonth, colors.primary);
   const selectedMarkedDates = {
     ...markedDates,
+    ...scheduleMarkedDates,
     [selectedDate]: {
-      ...(markedDates[selectedDate] || {}),
+      ...(markedDates[selectedDate] || scheduleMarkedDates[selectedDate] || {}),
       selected: true,
       selectedColor: colors.primary,
       selectedTextColor: colors.onPrimary
@@ -639,6 +699,7 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
           <Calendar
             markedDates={selectedMarkedDates}
             onDayPress={(day) => setSelectedDate(day.dateString)}
+            onMonthChange={(month) => setVisibleMonth(`${month.year}-${String(month.month).padStart(2, "0")}`)}
             theme={{
               calendarBackground: colors.surface,
               backgroundColor: colors.surface,
@@ -716,9 +777,11 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
   const colors = palette || getPalette({}, isDark);
   const [timeOpen, setTimeOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
+  const [repeatUntilOpen, setRepeatUntilOpen] = useState(false);
   const currentScheduled = isValid(parseISO(reminder.scheduledAt)) ? parseISO(reminder.scheduledAt) : new Date();
   const timePickerValue = reminder.timeSet === false ? new Date() : currentScheduled;
   const datePickerValue = reminder.hasDate === false ? new Date() : currentScheduled;
+  const repeatUntilValue = reminder.repeatUntil && isValid(parseISO(reminder.repeatUntil)) ? parseISO(reminder.repeatUntil) : currentScheduled;
   const openTimePicker = () => {
     if (Platform.OS === "android") {
       DateTimePickerAndroid.open({
@@ -783,8 +846,51 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       })).concat([{ text: "Cancel", style: "cancel" }])
     );
   };
+  const openRepeatUntilPicker = () => {
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: repeatUntilValue,
+        mode: "date",
+        display: "default",
+        positiveButton: { label: "OK", textColor: colors.primary },
+        negativeButton: { label: "Cancel", textColor: colors.onSurfaceVariant },
+        neutralButton: { label: "Clear", textColor: colors.onSurfaceVariant },
+        onChange: (event, selectedDate) => {
+          if (event.type === "neutralButtonPressed") {
+            onUpdate({ repeatUntil: null });
+            return;
+          }
+          if (event.type === "set" && selectedDate) {
+            const endOfDay = set(selectedDate, { hours: 23, minutes: 59, seconds: 59, milliseconds: 999 });
+            onUpdate({ repeatUntil: endOfDay.toISOString() });
+          }
+        }
+      });
+      return;
+    }
+    setRepeatUntilOpen(true);
+  };
+  const openFollowUpCountPicker = () => {
+    Alert.alert(
+      "Follow-up reminders",
+      "How many extra reminders should fire after the first alert?",
+      FOLLOW_UP_COUNTS.map((count) => ({
+        text: count === 0 ? "Off" : `${count} time${count > 1 ? "s" : ""}`,
+        onPress: () => onUpdate({ followUpEnabled: count > 0, followUpCount: count })
+      })).concat([{ text: "Cancel", style: "cancel" }])
+    );
+  };
+  const openFollowUpIntervalPicker = () => {
+    Alert.alert(
+      "Follow-up interval",
+      "How long should VizMinder wait between follow-up reminders?",
+      FOLLOW_UP_INTERVALS.map((minutes) => ({
+        text: `${minutes} minute${minutes > 1 ? "s" : ""}`,
+        onPress: () => onUpdate({ followUpIntervalMinutes: minutes })
+      })).concat([{ text: "Cancel", style: "cancel" }])
+    );
+  };
   const ringtoneLabel = RINGTONE_OPTIONS.find(([value]) => value === reminder.ringtone)?.[1] || "System alarm";
-
   return (
     <Animatable.View animation="fadeInUp" duration={240} style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle isDark={isDark}>{mode === "add" ? "Add Task" : "Edit Task"}</ScreenTitle>
@@ -837,6 +943,54 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           </View>
           <Switch value={Boolean(reminder.repeat)} color={colors.primary} onValueChange={(repeat) => onUpdate({ repeat })} />
         </View>
+        {reminder.repeat ? (
+          <EditField
+            isDark={isDark}
+            palette={colors}
+            label="Repeat until"
+            value={reminder.repeatUntil ? format(parseISO(reminder.repeatUntil), DATE_DISPLAY_FORMAT) : "No end date"}
+            onPress={openRepeatUntilPicker}
+            onClear={() => onUpdate({ repeatUntil: null })}
+          />
+        ) : null}
+        <View style={[styles.importantRow, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+          <View style={styles.settingsCopy}>
+            <Text style={[styles.editLabel, isDark && styles.textOnDark]}>After-answer follow-up</Text>
+            <Text style={[styles.importantHelp, isDark && styles.mutedOnDark]}>Repeat after Yes or No for time-sensitive tasks.</Text>
+          </View>
+          <Switch
+            value={Boolean(reminder.followUpEnabled)}
+            color={colors.primary}
+            onValueChange={(followUpEnabled) => onUpdate({ followUpEnabled, followUpCount: followUpEnabled ? reminder.followUpCount || 3 : 0 })}
+          />
+        </View>
+        {reminder.followUpEnabled ? (
+          <>
+            <EditNumberField
+              isDark={isDark}
+              palette={colors}
+              label="Follow-up count"
+              value={String(reminder.followUpCount || 1)}
+              helper="Extra alerts after Yes or No"
+              min={1}
+              max={20}
+              onChangeNumber={(followUpCount) => onUpdate({ followUpCount, followUpEnabled: followUpCount > 0 })}
+              onQuickPick={openFollowUpCountPicker}
+            />
+            <EditNumberField
+              isDark={isDark}
+              palette={colors}
+              label="Follow-up interval"
+              suffix="min"
+              value={String(reminder.followUpIntervalMinutes || 5)}
+              helper="Minutes between follow-up alerts"
+              min={1}
+              max={240}
+              onChangeNumber={(followUpIntervalMinutes) => onUpdate({ followUpIntervalMinutes })}
+              onQuickPick={openFollowUpIntervalPicker}
+            />
+          </>
+        ) : null}
         <View style={[styles.importantRow, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
           <View>
             <Text style={[styles.editLabel, isDark && styles.textOnDark]}>Important reminder</Text>
@@ -912,6 +1066,28 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           }}
         />
       ) : null}
+      {repeatUntilOpen ? (
+        <DateTimePicker
+          value={repeatUntilValue}
+          mode="date"
+          display={Platform.OS === "android" ? "calendar" : "default"}
+          design={Platform.OS === "android" ? "material" : undefined}
+          positiveButton={{ label: "OK", textColor: colors.primary }}
+          negativeButton={{ label: "Cancel", textColor: colors.onSurfaceVariant }}
+          neutralButton={{ label: "Clear", textColor: colors.onSurfaceVariant }}
+          onChange={(event, selectedDate) => {
+            setRepeatUntilOpen(Platform.OS === "ios");
+            if (event.type === "neutralButtonPressed") {
+              onUpdate({ repeatUntil: null });
+              return;
+            }
+            if (event.type === "set" && selectedDate) {
+              const endOfDay = set(selectedDate, { hours: 23, minutes: 59, seconds: 59, milliseconds: 999 });
+              onUpdate({ repeatUntil: endOfDay.toISOString() });
+            }
+          }}
+        />
+      ) : null}
     </Animatable.View>
   );
 }
@@ -941,6 +1117,46 @@ function EditField({ label, value, isDark = false, palette, onPress, onClear }) 
   );
 }
 
+function EditNumberField({ label, value, suffix = "", helper, min, max, isDark = false, palette, onChangeNumber, onQuickPick }) {
+  const colors = palette || getPalette({}, isDark);
+  return (
+    <View style={[styles.editTextField, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+      <View style={styles.numberFieldHeader}>
+        <View style={styles.settingsCopy}>
+          <Text style={[styles.editLabel, isDark && styles.textOnDark]}>{label}</Text>
+          {helper ? <Text style={[styles.importantHelp, isDark && styles.mutedOnDark]}>{helper}</Text> : null}
+        </View>
+        {onQuickPick ? (
+          <Pressable style={[styles.dialogIconButton, { backgroundColor: colors.surfaceVariant }]} onPress={onQuickPick}>
+            <MaterialCommunityIcons name="menu-down" size={24} color={colors.primary} />
+          </Pressable>
+        ) : null}
+      </View>
+      <View style={[styles.numberInputRow, { backgroundColor: colors.surfaceVariant }, isDark && styles.inputOnDark]}>
+        <TextInput
+          value={value}
+          onChangeText={(text) => {
+            const numeric = Number(text.replace(/[^\d]/g, ""));
+            if (!Number.isFinite(numeric)) {
+              return;
+            }
+            onChangeNumber(clampNumber(numeric, min, max));
+          }}
+          keyboardType="number-pad"
+          mode="flat"
+          dense
+          underlineColor="transparent"
+          activeUnderlineColor="transparent"
+          style={styles.numberInput}
+          textColor={colors.onSurface}
+          theme={{ colors: { primary: colors.primary } }}
+        />
+        {suffix ? <Text style={[styles.editValueText, { color: colors.onSurfaceVariant }]}>{suffix}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
 function EditTextField({ label, value, isDark = false, palette, onChangeText, multiline = false }) {
   const colors = palette || getPalette({}, isDark);
   return (
@@ -964,8 +1180,66 @@ function EditTextField({ label, value, isDark = false, palette, onChangeText, mu
   );
 }
 
-function AccountTab({ completedCount, isDark, palette }) {
+function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSyncNow, onMessage }) {
   const colors = palette || getPalette({}, isDark);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [syncRows, setSyncRows] = useState([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncError, setSyncError] = useState("");
+
+  const signedIn = authUser && !authUser.isAnonymous && authUser.uid !== "offline-user";
+  const accountLabel = signedIn ? authUser.email || "Email account" : authUser?.isAnonymous ? "Anonymous session" : "Not signed in";
+
+  const submitEmailAuth = async (mode) => {
+    setSyncError("");
+    try {
+      if (mode === "register") {
+        await registerWithEmail(email, password);
+        onMessage("Account created.");
+      } else {
+        await loginWithEmail(email, password);
+        onMessage("Signed in.");
+      }
+      setPassword("");
+    } catch (error) {
+      setSyncError(error.message);
+    }
+  };
+
+  const runSync = async () => {
+    setSyncing(true);
+    setSyncError("");
+    setSyncProgress(0.15);
+    try {
+      const services = getFirebaseServices();
+      const userId = services?.auth?.currentUser?.uid;
+      if (!services || !userId || userId === "offline-user") {
+        throw new Error("Sign in with Firebase before syncing.");
+      }
+      setSyncProgress(0.35);
+      const merged = await onSyncNow(userId);
+      setSyncProgress(0.7);
+      const cloud = await fetchRemindersFromFirestore(userId);
+      const cloudIds = new Set(cloud.map((item) => item.id));
+      setSyncRows(
+        merged.map((reminder) => ({
+          id: reminder.id,
+          title: reminder.title || "Untitled reminder",
+          status: cloudIds.has(reminder.id) ? "Synced" : "Not synced"
+        }))
+      );
+      setSyncProgress(1);
+      onMessage("Sync complete.");
+    } catch (error) {
+      setSyncError(error.message || "Sync failed.");
+      setSyncProgress(0);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Account</ScreenTitle>
@@ -975,22 +1249,51 @@ function AccountTab({ completedCount, isDark, palette }) {
         </View>
         <View>
           <Text style={[styles.accountName, isDark && styles.textOnDark]}>User</Text>
-          <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>Free Plan</Text>
+          <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>{accountLabel}</Text>
         </View>
       </View>
-      <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-        <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Plan</Text>
-        <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Upgrade for more Feature!</Text>
-        <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Completed reminders: {completedCount}</Text>
-        <View style={styles.planActions}>
-          <Button mode="outlined" textColor={colors.onSurfaceVariant} style={styles.planButton}>
-            Dismiss
-          </Button>
-          <Button mode="contained" icon="star-circle" buttonColor={colors.primary} style={styles.planButton}>
-            Upgrade
-          </Button>
+      <ScrollView contentContainerStyle={styles.accountContent}>
+        {!signedIn ? (
+          <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sign in</Text>
+            <TextInput value={email} onChangeText={setEmail} label="Email" autoCapitalize="none" keyboardType="email-address" style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
+            <TextInput value={password} onChangeText={setPassword} label="Password" secureTextEntry style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
+            <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Password requires at least 8 characters, 2 letters, and 6 numbers.</Text>
+            {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
+            <View style={styles.planActions}>
+              <Button mode="outlined" textColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("login")}>Login</Button>
+              <Button mode="contained" buttonColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("register")}>Register</Button>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Signed in</Text>
+            <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>{accountLabel}</Text>
+            {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
+            <Button mode="outlined" textColor={colors.primary} onPress={() => signOutUser().catch((error) => setSyncError(error.message))}>Sign out</Button>
+          </View>
+        )}
+
+        {signedIn ? (
+        <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+          <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sync Data</Text>
+          <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Completed reminders: {completedCount}</Text>
+          <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Sync status: {syncing ? "Syncing" : syncProgress === 1 ? "Synced" : "Idle"}</Text>
+          <View style={[styles.progressTrack, { backgroundColor: colors.surfaceVariant }]}>
+            <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.round(syncProgress * 100)}%` }]} />
+          </View>
+          <Button mode="contained" buttonColor={colors.primary} loading={syncing} disabled={syncing} onPress={runSync}>Sync now</Button>
+          <View style={styles.syncList}>
+            {syncRows.length ? syncRows.map((row) => (
+              <View key={row.id} style={styles.syncRow}>
+                <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>{row.title}</Text>
+                <Text style={[styles.syncStatus, row.status === "Synced" ? styles.syncOk : styles.syncWarn]}>{row.status}</Text>
+              </View>
+            )) : <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>Press sync to inspect current Firestore status.</Text>}
+          </View>
         </View>
-      </View>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }
@@ -1009,30 +1312,9 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     return () => backSubscription.remove();
   }, [settingsPage]);
   const items = [
-    ["palette-outline", "Theme", "Light, dark, system, and Material color options.", () => setSettingsPage("theme")],
+    ["palette-outline", "Theme", "Light, dark, and Material color options.", () => setSettingsPage("theme")],
     ["tune-vertical", "Advanced", "Debug controls and native alarm notes.", () => setSettingsPage("advanced")],
-    ["message-outline", "Notification", "Grant permission and send a test alert.", async () => {
-      const granted = await ensureNotificationPermission();
-      if (!granted) {
-        onMessage("Notification permission was not granted.");
-        return;
-      }
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "VizMinder test notification",
-          body: "Notifications are enabled for installed APK builds.",
-          sound: "default",
-          priority: Notifications.AndroidNotificationPriority.MAX
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 3, channelId: REMINDER_CHANNEL_ID }
-      });
-      onMessage("Test notification scheduled.");
-    }],
-    ["swap-vertical", "Sync Data", "Back up reminders and visual cues.", () => {
-      const info = getFirebaseDebugInfo();
-      onMessage(info.configured ? `Cloud sync is using Firestore project: ${info.projectId}.` : "Firebase config is missing; reminders are stored locally only.");
-    }],
-    ["shield-lock-outline", "Privacy", "Review local storage and image access.", () => onMessage("Reminder data stays local unless cloud sync is configured.")],
+    ["message-outline", "Notification", "Notification permissions, alert sound, and system settings.", () => setSettingsPage("notification")],
     ["restart", "Reset Reminders", "Clear all reminders on this device.", onReset]
   ];
 
@@ -1050,8 +1332,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
             <View style={styles.segmentedControl}>
               {[
                 ["light", "Light"],
-                ["dark", "Dark"],
-                ["system", "System"]
+                ["dark", "Dark"]
               ].map(([mode, label]) => (
                 <Pressable
                   key={mode}
@@ -1107,26 +1388,130 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     );
   }
 
+  if (settingsPage === "notification") {
+    return (
+      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+        <ScreenTitle isDark={isDark}>Notification</ScreenTitle>
+        <ScrollView contentContainerStyle={styles.settingsContent}>
+          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
+            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
+          </Pressable>
+          <View style={[styles.settingsPanel, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Scheduled reminders"
+              description="Allow VizMinder to schedule time-based alerts."
+              value={settings.reminderNotifications !== false}
+              onValueChange={(value) => onUpdateSettings({ reminderNotifications: value })}
+            />
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Full-screen alarm screen"
+              description="Show the Yes/No reminder screen for Android alarm alerts."
+              value={settings.fullScreenAlerts !== false}
+              onValueChange={(value) => onUpdateSettings({ fullScreenAlerts: value })}
+            />
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Sound"
+              description="Play the selected reminder ringtone."
+              value={settings.notificationSound !== false}
+              onValueChange={(value) => onUpdateSettings({ notificationSound: value })}
+            />
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Vibration"
+              description="Allow Android alarm alerts to vibrate."
+              value={settings.notificationVibration !== false}
+              onValueChange={(value) => onUpdateSettings({ notificationVibration: value })}
+            />
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Follow-up reminders"
+              description="Schedule extra alerts after a Yes or No response when a task enables follow-up."
+              value={settings.followUpNotifications !== false}
+              onValueChange={(value) => onUpdateSettings({ followUpNotifications: value })}
+            />
+            <Button
+              mode="contained"
+              buttonColor={colors.primary}
+              onPress={async () => {
+                const granted = await ensureNotificationPermission();
+                onMessage(granted ? "Notification permission is enabled." : "Notification permission was not granted.");
+              }}
+            >
+              Request notification permission
+            </Button>
+            <Button mode="outlined" textColor={colors.primary} onPress={() => Linking.openSettings()}>
+              Open Android app notification settings
+            </Button>
+            <Button
+              mode="text"
+              textColor={colors.primary}
+              onPress={async () => {
+                const granted = await ensureNotificationPermission();
+                if (!granted) {
+                  onMessage("Notification permission was not granted.");
+                  return;
+                }
+                await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: "VizMinder test notification",
+                    body: "Notifications are enabled for installed APK builds.",
+                    sound: settings.notificationSound === false ? null : "default",
+                    priority: Notifications.AndroidNotificationPriority.MAX
+                  },
+                  trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 3, channelId: REMINDER_CHANNEL_ID }
+                });
+                onMessage("Test notification scheduled.");
+              }}
+            >
+              Send test notification
+            </Button>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Settings</ScreenTitle>
       <ScrollView contentContainerStyle={styles.settingsContent}>
         <View style={[styles.settingsList, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
           {items.map(([icon, title, copy, action]) => (
-            <Pressable key={title} onPress={action}>
-              <View style={styles.settingsRow}>
+            <View key={title}>
+              <Pressable android_ripple={{ color: colors.surfaceVariant }} style={styles.settingsRow} onPress={action}>
                 <MaterialCommunityIcons name={icon} size={24} color={colors.onSurfaceVariant} />
                 <View style={styles.settingsCopy}>
                   <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>{title}</Text>
                   <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{copy}</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
-              </View>
+              </Pressable>
               <Divider style={styles.settingsDivider} />
-            </Pressable>
+            </View>
           ))}
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+function SettingsSwitch({ title, description, value, onValueChange, isDark, colors }) {
+  return (
+    <View style={styles.settingsSwitchRow}>
+      <View style={styles.settingsCopy}>
+        <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>{title}</Text>
+        <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{description}</Text>
+      </View>
+      <Switch value={value} color={colors.primary} onValueChange={onValueChange} />
     </View>
   );
 }
@@ -1311,14 +1696,14 @@ async function ensureNotificationPermission() {
   return requested.granted;
 }
 
-async function scheduleReminderNotification(reminder) {
+async function scheduleReminderNotification(reminder, settings = DEFAULT_SETTINGS) {
   if (reminder.timeSet === false || reminder.completed) {
     return null;
   }
 
   // Installed Android builds use the native AlarmManager full-screen alarm path.
   // Skipping Expo's parallel local notification prevents duplicate alarm sounds.
-  if (Platform.OS === "android") {
+  if (Platform.OS === "android" && settings.fullScreenAlerts !== false) {
     await ensureNotificationPermission();
     return null;
   }
@@ -1336,8 +1721,8 @@ async function scheduleReminderNotification(reminder) {
   return Notifications.scheduleNotificationAsync({
     content: {
       title: `VizMinder: ${reminder.title.trim() || "Reminder"}`,
-      body: reminder.description?.trim() || "Time to check this visual reminder.",
-      sound: "default",
+      body: reminder.description?.trim() || "Time to check this reminder.",
+      sound: settings.notificationSound === false ? null : "default",
       priority: Notifications.AndroidNotificationPriority.MAX,
       data: {
         reminderId: reminder.id
@@ -1354,6 +1739,9 @@ function getReminderNotificationTrigger(reminder) {
   }
 
   if (reminder.repeat) {
+    if (!isRepeatStillActive(reminder, scheduled)) {
+      return null;
+    }
     if (Platform.OS === "ios") {
       return {
         type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
@@ -1406,6 +1794,101 @@ function getNextDailyDate(isoDate) {
     next.setDate(next.getDate() + 1);
   }
   return next;
+}
+
+function isRepeatStillActive(reminder, date = new Date()) {
+  if (!reminder.repeatUntil) {
+    return true;
+  }
+  const until = parseISO(reminder.repeatUntil);
+  return isValid(until) ? date <= until : true;
+}
+
+function getNextFollowUpReminder(reminder) {
+  if (!reminder.followUpEnabled || Number(reminder.followUpCount || 0) <= 0) {
+    return null;
+  }
+  const next = new Date(Date.now() + Number(reminder.followUpIntervalMinutes || 5) * 60 * 1000);
+  return {
+    ...reminder,
+    scheduledAt: next.toISOString(),
+    completed: false,
+    followUpCount: Math.max(0, Number(reminder.followUpCount || 0) - 1)
+  };
+}
+
+function shouldShowReminderOnDate(reminder, dateString) {
+  if (reminder.completed) {
+    return false;
+  }
+  const scheduled = parseISO(reminder.scheduledAt);
+  if (!isValid(scheduled)) {
+    return false;
+  }
+  const selected = parseISO(dateString);
+  if (!isValid(selected)) {
+    return false;
+  }
+  const selectedDay = toDayKey(selected);
+  const scheduledDay = toDayKey(scheduled);
+  const startDay = getReminderStartDay(reminder, scheduled);
+
+  if (!reminder.repeat) {
+    const oneShotDay = reminder.hasDate === false ? getNextFloatingReminderDay(scheduled) : scheduledDay;
+    return oneShotDay === selectedDay;
+  }
+
+  if (selectedDay < startDay) {
+    return false;
+  }
+
+  if (reminder.repeatUntil) {
+    const until = parseISO(reminder.repeatUntil);
+    if (isValid(until) && selectedDay > toDayKey(until)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function getReminderStartDay(reminder, scheduled) {
+  if (reminder.hasDate !== false) {
+    return toDayKey(scheduled);
+  }
+  const created = reminder.createdAt && isValid(parseISO(reminder.createdAt)) ? parseISO(reminder.createdAt) : scheduled;
+  return toDayKey(created);
+}
+
+function getNextFloatingReminderDay(scheduled) {
+  const next = new Date();
+  next.setHours(scheduled.getHours(), scheduled.getMinutes(), 0, 0);
+  if (next <= new Date()) {
+    next.setDate(next.getDate() + 1);
+  }
+  return toDayKey(next);
+}
+
+function toDayKey(date) {
+  return format(date, "yyyy-MM-dd");
+}
+
+function buildScheduleMarkedDates(reminders, visibleMonth, color) {
+  const [yearText, monthText] = visibleMonth.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  if (!year || !month) {
+    return {};
+  }
+  const days = new Date(year, month, 0).getDate();
+  const marks = {};
+  for (let day = 1; day <= days; day += 1) {
+    const dateString = `${yearText}-${monthText}-${String(day).padStart(2, "0")}`;
+    if (reminders.some((reminder) => shouldShowReminderOnDate(reminder, dateString))) {
+      marks[dateString] = { marked: true, dotColor: color };
+    }
+  }
+  return marks;
 }
 
 function getCountdownLabel(isoDate) {
@@ -1939,6 +2422,27 @@ const styles = StyleSheet.create({
   editTextInputTall: {
     minHeight: 54
   },
+  numberFieldHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between"
+  },
+  numberInputRow: {
+    alignItems: "center",
+    borderRadius: 14,
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+    minHeight: 46,
+    paddingHorizontal: 10
+  },
+  numberInput: {
+    backgroundColor: "transparent",
+    flex: 1,
+    fontSize: 18,
+    paddingHorizontal: 0
+  },
   importantRow: {
     alignItems: "center",
     borderColor: LINE,
@@ -2047,6 +2551,49 @@ const styles = StyleSheet.create({
   },
   planButton: {
     borderRadius: 28
+  },
+  accountContent: {
+    gap: 14,
+    paddingBottom: 112
+  },
+  authInput: {
+    borderRadius: 12,
+    marginBottom: 10
+  },
+  progressTrack: {
+    borderRadius: 6,
+    height: 8,
+    marginBottom: 14,
+    overflow: "hidden",
+    width: "100%"
+  },
+  progressFill: {
+    height: "100%"
+  },
+  syncList: {
+    gap: 8,
+    marginTop: 14
+  },
+  syncRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  syncStatus: {
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  syncOk: {
+    color: SUCCESS
+  },
+  syncWarn: {
+    color: ERROR
+  },
+  syncError: {
+    color: ERROR,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 8
   },
   settingsList: {
     backgroundColor: SURFACE,

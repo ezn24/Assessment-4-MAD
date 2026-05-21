@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Appearance, useColorScheme } from "react-native";
+import { AppState, Appearance, useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SystemUI from "expo-system-ui";
 import { useMaterial3Theme } from "@pchmn/expo-material3-theme";
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from "react-native-paper";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -10,17 +11,22 @@ import { darkTheme, lightTheme } from "./src/theme";
 
 const SETTINGS_STORAGE_KEY = "vizminder-a4-settings";
 const DEFAULT_SETTINGS = {
-  themeMode: "system",
+  themeMode: "light",
   followSystemColors: true,
-  showReminderDebugButton: false
+  showReminderDebugButton: false,
+  reminderNotifications: true,
+  notificationSound: true,
+  fullScreenAlerts: true,
+  followUpNotifications: true,
+  notificationVibration: true
 };
 
 export default function App() {
   const hookScheme = useColorScheme();
-  const [appearanceScheme, setAppearanceScheme] = useState(Appearance.getColorScheme() || "light");
+  const [appearanceScheme, setAppearanceScheme] = useState(Appearance.getColorScheme() || hookScheme || "light");
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const systemScheme = hookScheme || appearanceScheme || "light";
-  const activeScheme = settings.themeMode === "system" ? systemScheme : settings.themeMode;
+  const systemScheme = appearanceScheme || hookScheme || "light";
+  const activeScheme = settings.themeMode === "dark" ? "dark" : settings.themeMode === "light" ? "light" : "light";
   const isDark = activeScheme === "dark";
   const { theme: materialTheme } = useMaterial3Theme({ fallbackSourceColor: "#6750A4" });
 
@@ -28,7 +34,8 @@ export default function App() {
     AsyncStorage.getItem(SETTINGS_STORAGE_KEY)
       .then((value) => {
         if (value) {
-          setSettings((current) => ({ ...current, ...JSON.parse(value) }));
+          const stored = JSON.parse(value);
+          setSettings((current) => ({ ...current, ...stored, themeMode: stored.themeMode === "dark" ? "dark" : "light" }));
         }
       })
       .catch(() => {});
@@ -40,6 +47,26 @@ export default function App() {
     });
     return () => subscription.remove();
   }, []);
+
+  useEffect(() => {
+    if (hookScheme) {
+      setAppearanceScheme(hookScheme);
+    }
+  }, [hookScheme]);
+
+  useEffect(() => {
+    const refreshScheme = () => setAppearanceScheme(Appearance.getColorScheme() || hookScheme || "light");
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        refreshScheme();
+      }
+    });
+    const interval = setInterval(refreshScheme, 1500);
+    return () => {
+      appStateSubscription.remove();
+      clearInterval(interval);
+    };
+  }, [hookScheme]);
 
   const updateSettings = (patch) => {
     setSettings((current) => {
@@ -64,10 +91,14 @@ export default function App() {
     };
   }, [isDark, materialTheme, settings.followSystemColors]);
 
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(paperTheme.colors.background).catch(() => {});
+  }, [paperTheme.colors.background]);
+
   return (
     // react-native-gesture-handler needs a native root view before Swipeable rows can work reliably.
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <PaperProvider key={`${activeScheme}-${settings.followSystemColors ? "dynamic" : "static"}`} theme={paperTheme}>
+      <PaperProvider key={`${activeScheme}-${settings.followSystemColors ? "dynamic" : "static"}-${paperTheme.dark ? "dark" : "light"}`} theme={paperTheme}>
         <StatusBar style={isDark ? "light" : "dark"} />
         <HomeScreen settings={settings} onUpdateSettings={updateSettings} isDarkOverride={isDark} themeColors={paperTheme.colors} />
       </PaperProvider>

@@ -20,6 +20,10 @@ export async function getDatabase() {
       imageUri TEXT,
       important INTEGER NOT NULL DEFAULT 0,
       repeat INTEGER NOT NULL DEFAULT 0,
+      repeatUntil TEXT,
+      followUpEnabled INTEGER NOT NULL DEFAULT 0,
+      followUpCount INTEGER NOT NULL DEFAULT 0,
+      followUpIntervalMinutes INTEGER NOT NULL DEFAULT 5,
       timeSet INTEGER NOT NULL DEFAULT 1,
       hasDate INTEGER NOT NULL DEFAULT 1,
       ringtone TEXT NOT NULL DEFAULT 'alarm',
@@ -40,6 +44,10 @@ async function migrateReminderColumns(db) {
   const names = new Set(columns.map((column) => column.name));
   const migrations = [
     ["repeat", "ALTER TABLE reminders ADD COLUMN repeat INTEGER NOT NULL DEFAULT 0"],
+    ["repeatUntil", "ALTER TABLE reminders ADD COLUMN repeatUntil TEXT"],
+    ["followUpEnabled", "ALTER TABLE reminders ADD COLUMN followUpEnabled INTEGER NOT NULL DEFAULT 0"],
+    ["followUpCount", "ALTER TABLE reminders ADD COLUMN followUpCount INTEGER NOT NULL DEFAULT 0"],
+    ["followUpIntervalMinutes", "ALTER TABLE reminders ADD COLUMN followUpIntervalMinutes INTEGER NOT NULL DEFAULT 5"],
     ["timeSet", "ALTER TABLE reminders ADD COLUMN timeSet INTEGER NOT NULL DEFAULT 1"],
     ["hasDate", "ALTER TABLE reminders ADD COLUMN hasDate INTEGER NOT NULL DEFAULT 1"],
     ["ringtone", "ALTER TABLE reminders ADD COLUMN ringtone TEXT NOT NULL DEFAULT 'alarm'"]
@@ -62,8 +70,8 @@ export async function upsertReminder(reminder) {
   const item = serializeReminder({ ...reminder, updatedAt: new Date().toISOString() });
   await db.runAsync(
     `INSERT OR REPLACE INTO reminders
-    (id, title, description, scheduledAt, visualType, emoji, icon, imageUri, important, repeat, timeSet, hasDate, ringtone, completed, latitude, longitude, locationLabel, notificationId, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    (id, title, description, scheduledAt, visualType, emoji, icon, imageUri, important, repeat, repeatUntil, followUpEnabled, followUpCount, followUpIntervalMinutes, timeSet, hasDate, ringtone, completed, latitude, longitude, locationLabel, notificationId, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.id,
       item.title,
@@ -75,6 +83,10 @@ export async function upsertReminder(reminder) {
       item.imageUri,
       item.important,
       item.repeat,
+      item.repeatUntil,
+      item.followUpEnabled,
+      item.followUpCount,
+      item.followUpIntervalMinutes,
       item.timeSet,
       item.hasDate,
       item.ringtone,

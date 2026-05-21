@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { addMinutes, format, formatDistanceStrict, isSameDay, parseISO } from "date-fns";
+import { format, formatDistanceStrict, isSameDay, parseISO } from "date-fns";
 import { clearReminders, deleteReminder as deleteStoredReminder, listReminders, upsertReminder } from "../services/storage";
 import {
   deleteReminderFromFirestore,
@@ -19,22 +19,30 @@ function normalizeReminder(reminder) {
     timeSet: reminder.timeSet !== false,
     hasDate: reminder.hasDate !== false,
     repeat: Boolean(reminder.repeat),
+    repeatUntil: reminder.repeatUntil || null,
+    followUpEnabled: Boolean(reminder.followUpEnabled),
+    followUpCount: Number(reminder.followUpCount || 0),
+    followUpIntervalMinutes: Number(reminder.followUpIntervalMinutes || 5),
     ringtone: reminder.ringtone || "alarm",
     important: Boolean(reminder.important),
     completed: Boolean(reminder.completed),
     streak: reminder.streak || 0,
+    createdAt: reminder.createdAt || reminder.updatedAt || reminder.scheduledAt || new Date().toISOString(),
     updatedAt: reminder.updatedAt || new Date().toISOString(),
     latitude: reminder.latitude ?? null,
     longitude: reminder.longitude ?? null,
     locationLabel: reminder.locationLabel || "",
     notificationId: reminder.notificationId || null,
-    ...reminder
+    ...reminder,
+    createdAt: reminder.createdAt || reminder.updatedAt || reminder.scheduledAt || new Date().toISOString(),
+    updatedAt: reminder.updatedAt || new Date().toISOString()
   };
 }
 
 function getCurrentFirebaseUserId() {
   const services = getFirebaseServices();
-  return services?.auth?.currentUser?.uid || null;
+  const user = services?.auth?.currentUser;
+  return user && !user.isAnonymous ? user.uid : null;
 }
 
 async function tryCloudSync(reminders) {
@@ -63,24 +71,43 @@ export function useReminders() {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [loaded, setLoaded] = useState(false);
 
+  const persistMergedReminders = useCallback(async (merged) => {
+    await Promise.all(merged.map(upsertReminder));
+    return merged;
+  }, []);
+
+  const refreshFromCloud = useCallback(async (userId = getCurrentFirebaseUserId()) => {
+    if (!userId) {
+      return reminders;
+    }
+    const [stored, cloud] = await Promise.all([
+      listReminders().then((items) => items.map(normalizeReminder)),
+      fetchRemindersFromFirestore(userId).then((items) => items.map(normalizeReminder))
+    ]);
+    const merged = mergeReminders(stored, cloud);
+    await persistMergedReminders(merged);
+    await syncRemindersToFirestore(userId, merged).catch(() => {});
+    setReminders(merged);
+    return merged;
+  }, [persistMergedReminders, reminders]);
+
+  const syncNow = useCallback(async (userId = getCurrentFirebaseUserId()) => {
+    if (!userId) {
+      throw new Error("Sign in before syncing.");
+    }
+    const merged = await refreshFromCloud(userId);
+    await syncRemindersToFirestore(userId, merged);
+    return merged;
+  }, [refreshFromCloud]);
+
   useEffect(() => {
     let cancelled = false;
     async function restore() {
       const stored = (await listReminders()).map(normalizeReminder);
+      await signInGuest().catch(() => null);
       if (!cancelled) {
         setReminders(stored);
         setLoaded(true);
-      }
-
-      const session = await signInGuest().catch(() => null);
-      const userId = session?.user?.uid;
-      const cloud = userId ? await fetchRemindersFromFirestore(userId).catch(() => []) : [];
-      if (cloud.length) {
-        const merged = mergeReminders(stored, cloud.map(normalizeReminder));
-        await Promise.all(merged.map(upsertReminder));
-        if (!cancelled) {
-          setReminders(merged);
-        }
       }
     }
     restore().catch(() => {
@@ -147,16 +174,22 @@ export function useReminders() {
   }, [replaceReminderState]);
 
   const addReminder = useCallback((draft = {}) => {
+    const now = new Date().toISOString();
     const nextReminder = normalizeReminder({
       id: draft.id || `reminder-${Date.now()}`,
       title: "New reminder",
       description: "Add a visual cue and simple prompt",
       visualCue: "Photo or icon cue",
       icon: "bell-outline",
-      scheduledAt: addMinutes(new Date(), 30).toISOString(),
+      scheduledAt: now,
+      createdAt: now,
       timeSet: true,
       hasDate: false,
       repeat: false,
+      repeatUntil: null,
+      followUpEnabled: false,
+      followUpCount: 0,
+      followUpIntervalMinutes: 5,
       important: false,
       completed: false,
       imageUri: null,
@@ -219,6 +252,8 @@ export function useReminders() {
     deleteReminder,
     resetPrototype,
     getCountdown,
+    refreshFromCloud,
+    syncNow,
     loaded
   };
 }
