@@ -17,7 +17,7 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
   override fun getName(): String = "AlarmScheduler"
 
   @ReactMethod
-  fun scheduleAlarm(reminderId: String, title: String, body: String, isoTime: String, repeatDaily: Boolean, ringtone: String, visualType: String, emoji: String, promise: Promise) {
+  fun scheduleAlarm(reminderId: String, title: String, body: String, isoTime: String, repeatDaily: Boolean, ringtone: String, visualType: String, emoji: String, repeatUntil: String, followUpRemaining: Int, followUpIntervalMinutes: Int, soundEnabled: Boolean, vibrationEnabled: Boolean, promise: Promise) {
     try {
       val fireAt = Instant.parse(isoTime).toEpochMilli()
       if (fireAt <= System.currentTimeMillis()) {
@@ -46,6 +46,11 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
         putExtra(EXTRA_RINGTONE, ringtone)
         putExtra(EXTRA_VISUAL_TYPE, visualType)
         putExtra(EXTRA_EMOJI, emoji)
+        putExtra(EXTRA_REPEAT_UNTIL, repeatUntil)
+        putExtra(EXTRA_FOLLOW_UP_REMAINING, followUpRemaining)
+        putExtra(EXTRA_FOLLOW_UP_INTERVAL_MINUTES, followUpIntervalMinutes)
+        putExtra(EXTRA_SOUND_ENABLED, soundEnabled)
+        putExtra(EXTRA_VIBRATION_ENABLED, vibrationEnabled)
       }
       val operation = PendingIntent.getBroadcast(
         reactContext,
@@ -64,6 +69,11 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
         putExtra(EXTRA_RINGTONE, ringtone)
         putExtra(EXTRA_VISUAL_TYPE, visualType)
         putExtra(EXTRA_EMOJI, emoji)
+        putExtra(EXTRA_REPEAT_UNTIL, repeatUntil)
+        putExtra(EXTRA_FOLLOW_UP_REMAINING, followUpRemaining)
+        putExtra(EXTRA_FOLLOW_UP_INTERVAL_MINUTES, followUpIntervalMinutes)
+        putExtra(EXTRA_SOUND_ENABLED, soundEnabled)
+        putExtra(EXTRA_VIBRATION_ENABLED, vibrationEnabled)
       }
       val showOperation = PendingIntent.getActivity(
         reactContext,
@@ -114,5 +124,10 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
     const val EXTRA_RINGTONE = "ringtone"
     const val EXTRA_VISUAL_TYPE = "visualType"
     const val EXTRA_EMOJI = "emoji"
+    const val EXTRA_REPEAT_UNTIL = "repeatUntil"
+    const val EXTRA_FOLLOW_UP_REMAINING = "followUpRemaining"
+    const val EXTRA_FOLLOW_UP_INTERVAL_MINUTES = "followUpIntervalMinutes"
+    const val EXTRA_SOUND_ENABLED = "soundEnabled"
+    const val EXTRA_VIBRATION_ENABLED = "vibrationEnabled"
   }
 }

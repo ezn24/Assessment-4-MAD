@@ -14,12 +14,17 @@ export async function scheduleNativeAlarm(reminder) {
   return AlarmScheduler.scheduleAlarm(
     reminder.id,
     reminder.title?.trim() || "Reminder",
-    reminder.description?.trim() || "Time to check this visual reminder.",
+    reminder.description?.trim() || "Time to check this reminder.",
     fireAt.toISOString(),
     Boolean(reminder.repeat),
     reminder.ringtone || "alarm",
     reminder.visualType || (reminder.imageUri ? "image" : "icon"),
-    reminder.emoji || "\u{1F514}"
+    reminder.emoji || "\u{1F514}",
+    reminder.repeatUntil || "",
+    reminder.followUpEnabled ? Number(reminder.followUpCount || 0) : 0,
+    Number(reminder.followUpIntervalMinutes || 5),
+    reminder.notificationSound !== false,
+    reminder.notificationVibration !== false
   );
 }
 
@@ -37,6 +42,9 @@ function getNativeAlarmFireDate(reminder) {
   }
   if (reminder.hasDate !== false && !reminder.repeat) {
     return scheduled > new Date() ? scheduled : null;
+  }
+  if (reminder.repeatUntil && scheduled > new Date(reminder.repeatUntil)) {
+    return null;
   }
   const next = new Date();
   next.setHours(scheduled.getHours(), scheduled.getMinutes(), 0, 0);
