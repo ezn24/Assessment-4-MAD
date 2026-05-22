@@ -26,7 +26,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
 import { format, formatDistanceStrict, isValid, parseISO, set } from "date-fns";
 import { Calendar } from "react-native-calendars";
-import { Button, Divider, Snackbar, Switch, Text, TextInput } from "react-native-paper";
+import { Button, Card, Divider, Snackbar, Switch, Surface, Text, TextInput, Portal, Dialog, IconButton, FAB, Chip, Badge } from "react-native-paper";
 import { useReminders } from "../hooks/useReminders";
 import {
   fetchRemindersFromFirestore,
@@ -606,7 +606,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
           />
         ) : (
           <>
-            <Animatable.View key={tab} animation="fadeInRight" duration={300} style={styles.flex} useNativeDriver>
+            <Animatable.View key={tab} animation="fadeIn" duration={400} style={styles.flex} useNativeDriver>
               {tab === "home" ? (
                 <HomeTab
                   reminders={reminders}
@@ -625,6 +625,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   }}
                   onToggle={async (reminder, completed) =>
                     {
+                      console.log("Toggle reminder:", reminder.id, "completed:", completed);
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
                       if (reminder.notificationId && Notifications) {
                         await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
@@ -683,6 +684,9 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   onMessage={setMessage}
                   isSmallScreen={isSmallScreen}
                   isLargeScreen={isLargeScreen}
+                  settings={settings}
+                  onUpdateSettings={updateSettings}
+                  onReset={confirmResetReminders}
                 />
               ) : tab === "device" ? (
                 <DeviceTab
@@ -718,18 +722,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   isSmallScreen={isSmallScreen}
                   isLargeScreen={isLargeScreen}
                 />
-              ) : (
-                <SettingsTab
-                  settings={settings}
-                  onUpdateSettings={updateSettings}
-                  isDark={isDark}
-                  palette={palette}
-                  onReset={confirmResetReminders}
-                  onMessage={setMessage}
-                  isSmallScreen={isSmallScreen}
-                  isLargeScreen={isLargeScreen}
-                />
-              )}
+              ) : null}
             </Animatable.View>
             <BottomNav active={tab} isDark={isDark} palette={palette} onChange={setTab} />
           </>
@@ -849,84 +842,69 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
         renderItem={({ item: reminder, index }) => (
           <Animatable.View 
             animation={deletingId === reminder.id ? "slideOutRight" : "fadeInUp"} 
-            delay={deletingId === reminder.id ? 0 : index * 50} 
-            duration={deletingId === reminder.id ? 300 : 280} 
+            delay={deletingId === reminder.id ? 0 : index * 60} 
+            duration={deletingId === reminder.id ? 350 : 320} 
             useNativeDriver
           >
-            <Pressable
+            <Card
               style={[
                 styles.taskRow,
                 isSmallScreen && styles.taskRowCompact,
-                {
-                  backgroundColor: colors.surface,
-                  shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 1,
-                  shadowRadius: 8,
-                  elevation: 3
-                },
                 isDark && styles.cardOnDark
-              ]} 
+              ]}
               onPress={() => onEdit(reminder)}
-              accessibilityLabel={`Reminder: ${reminder.title}`}
-              accessibilityHint={reminder.completed ? "Completed. Double tap to edit." : "Not completed. Double tap to edit."}
-              accessibilityRole="button"
+              elevation={3}
+              mode="elevated"
             >
-              <View style={styles.visualBubble}>
-                <VisualCue reminder={reminder} size={isSmallScreen ? 40 : 48} iconSize={isSmallScreen ? 20 : 24} compact palette={colors} />
-              </View>
-              <View style={styles.taskCopy}>
-                <View style={styles.taskHeader}>
-                  <Text style={[styles.taskTime, { color: primary }]}>
-                    {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
-                  </Text>
-                  <View style={styles.taskBadges}>
-                    {reminder.priority === "high" && (
-                      <MaterialCommunityIcons name="flag" size={16} color={colors.error || ERROR} />
-                    )}
+              <Card.Content style={styles.cardContent}>
+                <View style={styles.taskMain}>
+                  <View style={styles.visualBubble}>
+                    <VisualCue reminder={reminder} size={isSmallScreen ? 40 : 48} iconSize={isSmallScreen ? 20 : 24} compact palette={colors} />
+                  </View>
+                  <View style={styles.taskCopy}>
+                    <View style={styles.taskHeader}>
+                      <Text style={[styles.taskTime, { color: primary }]}>
+                        {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
+                      </Text>
+                      {reminder.priority === "high" && (
+                        <Chip icon="flag" compact mode="flat" style={styles.priorityChip} textStyle={styles.chipText}>High</Chip>
+                      )}
+                    </View>
+                    <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
+                    {reminder.description ? <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>{reminder.description}</Text> : null}
                   </View>
                 </View>
-                <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
-                {reminder.description ? <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>{reminder.description}</Text> : null}
-              </View>
-              <View style={styles.taskActions}>
-              {showReminderDebugButton ? (
-                <Pressable style={styles.testButton} onPress={() => onTestReminder(reminder)}>
-                  <MaterialCommunityIcons name="play-circle-outline" size={24} color={primary} />
-                </Pressable>
-              ) : null}
-                <Pressable style={styles.editIconButton} onPress={() => onEdit(reminder)}>
-                  <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.onSurfaceVariant} />
-                </Pressable>
-                <Pressable 
-                  style={styles.deleteIconButton} 
-                  onPress={() => handleDelete(reminder)}
-                  disabled={deletingId === reminder.id}
-                >
-                  <MaterialCommunityIcons 
-                    name="delete-outline" 
+                <View style={styles.taskActions}>
+                  {showReminderDebugButton ? (
+                    <IconButton icon="play-circle-outline" size={24} iconColor={primary} onPress={() => onTestReminder(reminder)} />
+                  ) : null}
+                  <IconButton icon="pencil" size={20} iconColor={colors.onSurfaceVariant} onPress={() => onEdit(reminder)} />
+                  <IconButton 
+                    icon="trash-can" 
                     size={20} 
-                    color={deletingId === reminder.id ? colors.onSurfaceDisabled : (colors.error || ERROR)} 
+                    iconColor={deletingId === reminder.id ? colors.onSurfaceDisabled : (colors.error || ERROR)} 
+                    onPress={() => handleDelete(reminder)}
+                    disabled={deletingId === reminder.id}
                   />
-                </Pressable>
-                <Switch 
-                  value={!reminder.completed} 
-                  color={primary} 
-                  onValueChange={(value) => onToggle(reminder, !value)}
-                  accessibilityLabel={reminder.completed ? "Mark as incomplete" : "Mark as complete"}
-                  accessibilityRole="switch"
-                />
-              </View>
-            </Pressable>
+                  <Switch 
+                    value={!reminder.completed} 
+                    color={primary} 
+                    onValueChange={(value) => onToggle(reminder, !value)}
+                    accessibilityLabel={reminder.completed ? "Mark as incomplete" : "Mark as complete"}
+                    accessibilityRole="switch"
+                  />
+                </View>
+              </Card.Content>
+            </Card>
           </Animatable.View>
         )}
       />
-      <View style={[styles.searchDock, { backgroundColor: colors.surface }, isDark && styles.surfaceVariantOnDark]}>
-        <MaterialCommunityIcons name="magnify" size={20} color={colors.onSurfaceVariant} />
+      <Surface style={[styles.searchDock, { backgroundColor: colors.surface }, isDark && styles.surfaceVariantOnDark]} elevation={4}>
+        <MaterialCommunityIcons name="magnify" size={20} color={colors.onSurfaceVariant} style={styles.searchIcon} />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search"
+          placeholder="Search reminders..."
           mode="flat"
           dense
           underlineColor="transparent"
@@ -938,17 +916,14 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
           accessibilityLabel="Search reminders"
           accessibilityHint="Type to filter reminders by title or description"
         />
-        <Animatable.View animation="pulse" iterationCount="infinite" duration={2000}>
-          <Pressable 
-            style={[styles.addButton, { backgroundColor: primary }]} 
-            onPress={onAdd}
-            accessibilityLabel="Add new reminder"
-            accessibilityRole="button"
-          >
-            <MaterialCommunityIcons name="plus" size={24} color="#FFFFFF" />
-          </Pressable>
-        </Animatable.View>
-      </View>
+      </Surface>
+      <FAB
+        icon="plus"
+        style={[styles.fab, { backgroundColor: primary }]}
+        onPress={onAdd}
+        accessibilityLabel="Add new reminder"
+        accessibilityRole="button"
+      />
     </View>
   );
 }
@@ -993,10 +968,7 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
           styles.materialCard, 
           { 
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 1,
-            shadowRadius: 8,
+            boxShadow: isDark ? "0px 2px 8px rgba(0,0,0,0.5)" : "0px 2px 8px rgba(0,0,0,0.08)",
             elevation: 3
           }, 
           isDark && styles.materialCardDark
@@ -1025,10 +997,7 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
           styles.materialCard, 
           { 
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 1,
-            shadowRadius: 8,
+            boxShadow: isDark ? "0px 2px 8px rgba(0,0,0,0.5)" : "0px 2px 8px rgba(0,0,0,0.08)",
             elevation: 3
           }, 
           isDark && styles.materialCardDark
@@ -1103,7 +1072,7 @@ function ReminderPrompt({ reminder, isDark, palette, onNo, onYes, onSnooze }) {
   };
 
   return (
-    <Animatable.View animation="fadeInUp" duration={260} style={[styles.reminderScreen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
+    <Animatable.View animation="bounceIn" duration={500} style={[styles.reminderScreen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle isDark={isDark}>Reminder</ScreenTitle>
       <VisualCue reminder={reminder} size={120} iconSize={56} palette={colors} />
       <View style={styles.reminderCopy}>
@@ -1274,7 +1243,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
   };
   const ringtoneLabel = RINGTONE_OPTIONS.find(([value]) => value === reminder.ringtone)?.[1] || "System alarm";
   return (
-    <Animatable.View animation="fadeInUp" duration={240} style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
+    <Animatable.View animation="fadeInUp" duration={300} style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle isDark={isDark}>{mode === "add" ? "New Reminder" : "Edit Reminder"}</ScreenTitle>
       <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.imageEditWrap}>
@@ -1306,7 +1275,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
                 openDatePicker();
               }}
             >
-              <MaterialCommunityIcons name="calendar" size={20} color={colors.primary} />
+              <MaterialCommunityIcons name="calendar-range" size={20} color={colors.primary} />
               <Text style={[styles.dateTimeButtonText, { color: colors.onSurface }]}>
                 {reminder.hasDate === false ? "Select Date" : format(parseISO(reminder.scheduledAt), "MMM dd, yyyy")}
               </Text>
@@ -1318,7 +1287,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
                 openTimePicker();
               }}
             >
-              <MaterialCommunityIcons name="clock" size={20} color={colors.primary} />
+              <MaterialCommunityIcons name="clock-outline" size={20} color={colors.primary} />
               <Text style={[styles.dateTimeButtonText, { color: colors.onSurface }]}>
                 {reminder.timeSet === false ? "Select Time" : format(parseISO(reminder.scheduledAt), "HH:mm")}
               </Text>
@@ -1341,10 +1310,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           styles.importantRow, 
           { 
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           }, 
           isDark && styles.cardOnDark
@@ -1369,10 +1335,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           styles.importantRow, 
           { 
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           }, 
           isDark && styles.cardOnDark
@@ -1418,10 +1381,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           styles.importantRow, 
           { 
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           }, 
           isDark && styles.cardOnDark
@@ -1660,96 +1620,60 @@ function StatsTab({ reminders, completedCount, isDark, palette, isSmallScreen, i
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Stats</ScreenTitle>
       <ScrollView contentContainerStyle={[styles.statsContent, isSmallScreen && styles.statsContentCompact]} showsVerticalScrollIndicator={false}>
-        <View style={[
-          styles.statsCard, 
-          { 
-            backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 1,
-            shadowRadius: 8,
-            elevation: 3
-          }, 
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Completion Rate</Text>
-          <View style={styles.statsValueContainer}>
-            <Text style={[styles.statsValue, { color: colors.primary }]}>{completionRate}%</Text>
-            <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>{completedCount} of {totalReminders} completed</Text>
-          </View>
-          <View style={[styles.progressBar, { backgroundColor: colors.surfaceVariant }]}>
-            <View style={[styles.progressFill, { width: `${completionRate}%`, backgroundColor: colors.primary }]} />
-          </View>
-        </View>
-
-        <View style={[
-          styles.statsCard, 
-          { 
-            backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 1,
-            shadowRadius: 8,
-            elevation: 3
-          }, 
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Important Reminders</Text>
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: colors.primary }]}>{importantReminders}</Text>
-              <Text style={[styles.statLabel, isDark && styles.mutedOnDark]}>Total</Text>
+        <Card style={styles.statsCard} elevation={3} mode="elevated">
+          <Card.Content>
+            <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Completion Rate</Text>
+            <View style={styles.statsValueContainer}>
+              <Text style={[styles.statsValue, { color: colors.primary }]}>{completionRate}%</Text>
+              <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>{completedCount} of {totalReminders} completed</Text>
             </View>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: colors.success || SUCCESS }]}>{completedImportant}</Text>
-              <Text style={[styles.statLabel, isDark && styles.mutedOnDark]}>Completed</Text>
+            <View style={[styles.progressBar, { backgroundColor: colors.surfaceVariant }]}>
+              <View style={[styles.progressFill, { width: `${completionRate}%`, backgroundColor: colors.primary }]} />
             </View>
-          </View>
-        </View>
+          </Card.Content>
+        </Card>
 
-        <View style={[
-          styles.statsCard, 
-          { 
-            backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 1,
-            shadowRadius: 8,
-            elevation: 3
-          }, 
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Today's Reminders</Text>
-          <View style={styles.statsValueContainer}>
-            <Text style={[styles.statsValue, { color: colors.primary }]}>{todayReminders}</Text>
-            <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>Reminders scheduled for today</Text>
-          </View>
-        </View>
+        <Card style={styles.statsCard} elevation={3} mode="elevated">
+          <Card.Content>
+            <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Important Reminders</Text>
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Text style={[styles.statNumber, { color: colors.primary }]}>{importantReminders}</Text>
+                <Text style={[styles.statLabel, isDark && styles.mutedOnDark]}>Total</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={[styles.statNumber, { color: colors.success || SUCCESS }]}>{completedImportant}</Text>
+                <Text style={[styles.statLabel, isDark && styles.mutedOnDark]}>Completed</Text>
+              </View>
+            </View>
+          </Card.Content>
+        </Card>
 
-        <View style={[
-          styles.statsCard, 
-          { 
-            backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 1,
-            shadowRadius: 8,
-            elevation: 3
-          }, 
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Best Streak</Text>
-          <View style={styles.statsValueContainer}>
-            <Text style={[styles.statsValue, { color: colors.warning || "#FF9500" }]}>{streak}</Text>
-            <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>Consecutive days completed</Text>
-          </View>
-        </View>
+        <Card style={styles.statsCard} elevation={3} mode="elevated">
+          <Card.Content>
+            <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Today's Reminders</Text>
+            <View style={styles.statsValueContainer}>
+              <Text style={[styles.statsValue, { color: colors.primary }]}>{todayReminders}</Text>
+              <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>Reminders scheduled for today</Text>
+            </View>
+          </Card.Content>
+        </Card>
+
+        <Card style={styles.statsCard} elevation={3} mode="elevated">
+          <Card.Content>
+            <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Best Streak</Text>
+            <View style={styles.statsValueContainer}>
+              <Text style={[styles.statsValue, { color: colors.warning || "#FF9500" }]}>{streak}</Text>
+              <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>Consecutive days completed</Text>
+            </View>
+          </Card.Content>
+        </Card>
       </ScrollView>
     </View>
   );
 }
 
-function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSyncNow, onMessage, isSmallScreen, isLargeScreen }) {
+function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSyncNow, onMessage, isSmallScreen, isLargeScreen, settings, onUpdateSettings, onReset }) {
   const colors = palette || getPalette({}, isDark);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1757,9 +1681,207 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncError, setSyncError] = useState("");
+  const [settingsPage, setSettingsPage] = useState("main");
 
   const signedIn = authUser && !authUser.isAnonymous && authUser.uid !== "offline-user";
   const accountLabel = signedIn ? authUser.email || "Email account" : authUser?.isAnonymous ? "Anonymous session" : "Not signed in";
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || settingsPage === "main") {
+      return undefined;
+    }
+    const backSubscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setSettingsPage("main");
+      return true;
+    });
+    return () => backSubscription.remove();
+  }, [settingsPage]);
+
+  if (settingsPage === "theme") {
+    return (
+      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+        <ScreenTitle isDark={isDark}>Theme</ScreenTitle>
+        <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
+          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
+            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Account</Text>
+          </Pressable>
+          <View style={[
+            styles.settingsPanel,
+            {
+              backgroundColor: colors.surface,
+              boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
+              elevation: 2
+            },
+            isDark && styles.materialCardDark
+          ]}>
+            <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Theme mode</Text>
+            <View style={styles.segmentedControl}>
+              {[
+                ["light", "Light"],
+                ["dark", "Dark"]
+              ].map(([mode, label]) => (
+                <Pressable
+                  key={mode}
+                  style={[styles.segmentButton, { borderColor: colors.outline }, settings.themeMode === mode && { backgroundColor: colors.primary }]}
+                  onPress={() => onUpdateSettings({ themeMode: mode })}
+                >
+                  <Text style={[styles.segmentText, isDark && styles.mutedOnDark, settings.themeMode === mode && styles.segmentTextActive]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.settingsSwitchRow}>
+              <View style={styles.settingsCopy}>
+                <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Follow system Material colors</Text>
+                <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                  {settings.followSystemColors ? "Use system color preference when available." : "Use VizMinder purple palette."}
+                </Text>
+              </View>
+              <Switch value={settings.followSystemColors} color={colors.primary} onValueChange={(value) => onUpdateSettings({ followSystemColors: value })} />
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (settingsPage === "advanced") {
+    return (
+      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+        <ScreenTitle isDark={isDark}>Advanced</ScreenTitle>
+        <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
+          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
+            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Account</Text>
+          </Pressable>
+          <View style={[
+            styles.settingsPanel,
+            {
+              backgroundColor: colors.surface,
+              boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
+              elevation: 2
+            },
+            isDark && styles.materialCardDark
+          ]}>
+            <View style={styles.settingsSwitchRow}>
+              <View style={styles.settingsCopy}>
+                <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Reminder debug button</Text>
+                <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>Show the Home test button for the Yes/No prompt.</Text>
+              </View>
+              <Switch
+                value={settings.showReminderDebugButton}
+                color={colors.primary}
+                onValueChange={(value) => onUpdateSettings({ showReminderDebugButton: value })}
+              />
+            </View>
+            <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+              The installed Android APK uses native AlarmManager and a lock-screen Activity for full-screen visual reminders. Android may still require notification and exact alarm permission.
+            </Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (settingsPage === "notification") {
+    return (
+      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+        <ScreenTitle isDark={isDark}>Notification</ScreenTitle>
+        <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
+          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
+            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Account</Text>
+          </Pressable>
+          <View style={[
+            styles.settingsPanel,
+            {
+              backgroundColor: colors.surface,
+              boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
+              elevation: 2
+            },
+            isDark && styles.materialCardDark
+          ]}>
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Scheduled reminders"
+              description="Allow VizMinder to schedule time-based alerts."
+              value={settings.reminderNotifications !== false}
+              onValueChange={(value) => onUpdateSettings({ reminderNotifications: value })}
+            />
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Full-screen alarm screen"
+              description="Show the Yes/No reminder screen for Android alarm alerts."
+              value={settings.fullScreenAlerts !== false}
+              onValueChange={(value) => onUpdateSettings({ fullScreenAlerts: value })}
+            />
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Sound"
+              description="Play the selected reminder ringtone."
+              value={settings.notificationSound !== false}
+              onValueChange={(value) => onUpdateSettings({ notificationSound: value })}
+            />
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Vibration"
+              description="Allow Android alarm alerts to vibrate."
+              value={settings.notificationVibration !== false}
+              onValueChange={(value) => onUpdateSettings({ notificationVibration: value })}
+            />
+            <SettingsSwitch
+              isDark={isDark}
+              colors={colors}
+              title="Follow-up reminders"
+              description="Schedule extra alerts after a Yes or No response when a task enables follow-up."
+              value={settings.followUpNotifications !== false}
+              onValueChange={(value) => onUpdateSettings({ followUpNotifications: value })}
+            />
+            <Button
+              mode="contained"
+              buttonColor={colors.primary}
+              onPress={async () => {
+                const granted = await ensureNotificationPermission();
+                onMessage(granted ? "Notification permission is enabled." : "Notification permission was not granted.");
+              }}
+            >
+              Request notification permission
+            </Button>
+            <Button mode="outlined" textColor={colors.primary} onPress={() => Linking.openSettings()}>
+              Open Android app notification settings
+            </Button>
+            <Button
+              mode="text"
+              textColor={colors.primary}
+              onPress={async () => {
+                const granted = await ensureNotificationPermission();
+                if (!granted) {
+                  onMessage("Notification permission was not granted.");
+                  return;
+                }
+                await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: "VizMinder test notification",
+                    body: "Notifications are enabled for installed APK builds.",
+                    sound: settings.notificationSound === false ? null : "default",
+                    priority: Notifications.AndroidNotificationPriority.MAX
+                  },
+                  trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 3, channelId: REMINDER_CHANNEL_ID }
+                });
+                onMessage("Test notification scheduled.");
+              }}
+            >
+              Send test notification
+            </Button>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   const submitEmailAuth = async (mode) => {
     setSyncError("");
@@ -1812,68 +1934,41 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Account</ScreenTitle>
-      <View style={[
-        styles.accountCard, 
-        { 
-          backgroundColor: colors.surface,
-          shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 1,
-          shadowRadius: 8,
-          elevation: 3
-        }, 
-        isDark && styles.materialCardDark
-      ]}>
-        <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
-          <MaterialCommunityIcons name="account-outline" size={isSmallScreen ? 36 : 40} color={colors.primary} />
-        </View>
-        <View>
-          <Text style={[styles.accountName, isDark && styles.textOnDark]}>User</Text>
-          <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>{accountLabel}</Text>
-        </View>
-      </View>
+      <Card style={styles.accountCard} elevation={3} mode="elevated">
+        <Card.Content style={styles.accountCardContent}>
+          <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
+            <MaterialCommunityIcons name="account" size={isSmallScreen ? 36 : 40} color={colors.primary} />
+          </View>
+          <View>
+            <Text style={[styles.accountName, isDark && styles.textOnDark]}>User</Text>
+            <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>{accountLabel}</Text>
+          </View>
+        </Card.Content>
+      </Card>
       <ScrollView contentContainerStyle={[styles.accountContent, isSmallScreen && styles.accountContentCompact]} showsVerticalScrollIndicator={false}>
         {!signedIn ? (
-          <View style={[
-            styles.planBlock, 
-            { 
-              backgroundColor: colors.surface,
-              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 1,
-              shadowRadius: 4,
-              elevation: 2
-            }, 
-            isDark && styles.materialCardDark
-          ]}>
-            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sign In</Text>
-            <TextInput value={email} onChangeText={setEmail} label="Email" autoCapitalize="none" keyboardType="email-address" style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
-            <TextInput value={password} onChangeText={setPassword} label="Password" secureTextEntry style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
-            <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Password requires at least 8 characters, 2 letters, and 6 numbers.</Text>
-            {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
-            <View style={styles.planActions}>
-              <Button mode="outlined" textColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("login")}>Sign In</Button>
-              <Button mode="contained" buttonColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("register")}>Create Account</Button>
-            </View>
-          </View>
+          <Card style={styles.planBlock} elevation={2} mode="elevated">
+            <Card.Content>
+              <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sign In</Text>
+              <TextInput value={email} onChangeText={setEmail} label="Email" autoCapitalize="none" keyboardType="email-address" style={styles.authInput} textColor={colors.onSurface} />
+              <TextInput value={password} onChangeText={setPassword} label="Password" secureTextEntry style={styles.authInput} textColor={colors.onSurface} />
+              <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Password requires at least 8 characters, 2 letters, and 6 numbers.</Text>
+              {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
+              <View style={styles.planActions}>
+                <Button mode="outlined" textColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("login")}>Sign In</Button>
+                <Button mode="contained" buttonColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("register")}>Create Account</Button>
+              </View>
+            </Card.Content>
+          </Card>
         ) : (
-          <View style={[
-            styles.planBlock, 
-            { 
-              backgroundColor: colors.surface,
-              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 1,
-              shadowRadius: 4,
-              elevation: 2
-            }, 
-            isDark && styles.materialCardDark
-          ]}>
-            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Signed In</Text>
-            <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>{accountLabel}</Text>
-            {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
-            <Button mode="outlined" textColor={colors.primary} onPress={() => signOutUser().catch((error) => setSyncError(error.message))}>Sign Out</Button>
-          </View>
+          <Card style={styles.planBlock} elevation={2} mode="elevated">
+            <Card.Content>
+              <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Signed In</Text>
+              <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>{accountLabel}</Text>
+              {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
+              <Button mode="outlined" textColor={colors.primary} onPress={() => signOutUser().catch((error) => setSyncError(error.message))}>Sign Out</Button>
+            </Card.Content>
+          </Card>
         )}
 
         {signedIn ? (
@@ -1881,10 +1976,7 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
           styles.planBlock, 
           { 
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           }, 
           isDark && styles.materialCardDark
@@ -1906,6 +1998,40 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
           </View>
         </View>
         ) : null}
+
+        <View style={[styles.sectionDivider, { backgroundColor: colors.outline }]} />
+
+        <View style={[
+          styles.planBlock,
+          {
+            backgroundColor: colors.surface,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
+            elevation: 2
+          },
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Settings</Text>
+          <View style={styles.settingsList}>
+            {[
+              ["palette", "Theme", "Light, dark, and Material color options.", () => setSettingsPage("theme")],
+              ["cog", "Advanced", "Debug controls and native alarm notes.", () => setSettingsPage("advanced")],
+              ["bell-ring", "Notification", "Notification permissions, alert sound, and system settings.", () => setSettingsPage("notification")],
+              ["alert-circle", "Reset Reminders", "Clear all reminders on this device.", onReset]
+            ].map(([icon, title, copy, action]) => (
+              <View key={title}>
+                <Pressable android_ripple={{ color: colors.surfaceVariant }} style={styles.settingsRow} onPress={action}>
+                  <MaterialCommunityIcons name={icon} size={24} color={colors.onSurfaceVariant} />
+                  <View style={styles.settingsCopy}>
+                    <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>{title}</Text>
+                    <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{copy}</Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
+                </Pressable>
+                <Divider style={styles.settingsDivider} />
+              </View>
+            ))}
+          </View>
+        </View>
       </ScrollView>
     </View>
   );
@@ -1944,10 +2070,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
             styles.settingsPanel, 
             { 
               backgroundColor: colors.surface,
-              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 1,
-              shadowRadius: 4,
+              boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
               elevation: 2
             }, 
             isDark && styles.materialCardDark
@@ -1995,10 +2118,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
             styles.settingsPanel, 
             { 
               backgroundColor: colors.surface,
-              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 1,
-              shadowRadius: 4,
+              boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
               elevation: 2
             }, 
             isDark && styles.materialCardDark
@@ -2036,10 +2156,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
             styles.settingsPanel, 
             { 
               backgroundColor: colors.surface,
-              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 1,
-              shadowRadius: 4,
+              boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
               elevation: 2
             }, 
             isDark && styles.materialCardDark
@@ -2134,10 +2251,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
           styles.settingsList, 
           { 
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           }, 
           isDark && styles.materialCardDark
@@ -2264,10 +2378,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
           styles.settingsPanel,
           {
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           },
           isDark && styles.materialCardDark
@@ -2294,10 +2405,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
           styles.settingsPanel,
           {
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           },
           isDark && styles.materialCardDark
@@ -2323,10 +2431,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
           styles.settingsPanel,
           {
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           },
           isDark && styles.materialCardDark
@@ -2371,10 +2476,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
           styles.settingsPanel,
           {
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           },
           isDark && styles.materialCardDark
@@ -2407,10 +2509,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
           styles.settingsPanel,
           {
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           },
           isDark && styles.materialCardDark
@@ -2443,10 +2542,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
           styles.settingsPanel,
           {
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           },
           isDark && styles.materialCardDark
@@ -2474,10 +2570,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
           styles.settingsPanel,
           {
             backgroundColor: colors.surface,
-            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 1,
-            shadowRadius: 4,
+            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
             elevation: 2
           },
           isDark && styles.materialCardDark
@@ -2501,12 +2594,11 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
 function BottomNav({ active, isDark, palette, onChange }) {
   const colors = palette || getPalette({}, isDark);
   const tabs = [
-    ["home", "bell-outline", "Reminders"],
-    ["schedule", "calendar-month-outline", "Schedule"],
-    ["stats", "chart-line", "Stats"],
-    ["account", "account-circle-outline", "Account"],
-    ["device", "cellphone-information", "Device"],
-    ["settings", "cog-outline", "Settings"]
+    ["home", "bell-ring", "Reminders"],
+    ["schedule", "calendar-clock", "Schedule"],
+    ["stats", "chart-box", "Stats"],
+    ["account", "account-circle", "Account"],
+    ["device", "devices", "Device"]
   ];
 
   return (
@@ -2515,10 +2607,7 @@ function BottomNav({ active, isDark, palette, onChange }) {
       { 
         backgroundColor: colors.surface, 
         borderTopColor: colors.outline,
-        shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
+        boxShadow: isDark ? "0px -2px 8px rgba(0,0,0,0.5)" : "0px -2px 8px rgba(0,0,0,0.08)",
         elevation: 4
       }, 
       isDark && styles.bottomNavDark
@@ -3336,6 +3425,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 4
   },
+  taskMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1
+  },
+  cardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 16
+  },
+  priorityChip: {
+    height: 24,
+    marginLeft: 8
+  },
+  chipText: {
+    fontSize: 11,
+    fontWeight: "600"
+  },
+  searchIcon: {
+    marginLeft: 12
+  },
+  fab: {
+    position: "absolute",
+    bottom: 90,
+    right: 16,
+    borderRadius: 16
+  },
   testButton: {
     alignItems: "center",
     backgroundColor: PRIMARY_CONTAINER,
@@ -3347,18 +3465,18 @@ const styles = StyleSheet.create({
   editIconButton: {
     alignItems: "center",
     backgroundColor: SURFACE_VARIANT,
-    borderRadius: 16,
-    height: 32,
+    borderRadius: 18,
+    height: 36,
     justifyContent: "center",
-    width: 32
+    width: 36
   },
   deleteIconButton: {
     alignItems: "center",
     backgroundColor: SURFACE_VARIANT,
-    borderRadius: 16,
-    height: 32,
+    borderRadius: 18,
+    height: 36,
     justifyContent: "center",
-    width: 32
+    width: 36
   },
   searchDock: {
     alignItems: "center",
@@ -3373,10 +3491,7 @@ const styles = StyleSheet.create({
     paddingRight: 8,
     position: "absolute",
     right: 16,
-    shadowColor: "rgba(0,0,0,0.12)",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
+    boxShadow: "0px 4px 12px rgba(0,0,0,0.12)",
     elevation: 4
   },
   searchDockInput: {
@@ -3605,35 +3720,38 @@ const styles = StyleSheet.create({
     width: "100%"
   },
   dateTimeSection: {
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
-    marginBottom: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    marginBottom: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     width: "100%"
   },
   dateTimeRow: {
     flexDirection: "row",
     gap: 12,
-    marginTop: 8
+    marginTop: 12
   },
   dateTimeButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12
+    gap: 10,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "transparent"
   },
   dateTimeButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600"
   },
   dateTimeHint: {
-    fontSize: 13,
-    marginTop: 8,
-    fontStyle: "italic"
+    fontSize: 14,
+    marginTop: 12,
+    fontStyle: "italic",
+    fontWeight: "500"
   },
   editTextFieldTall: {
     minHeight: 94
@@ -3916,6 +4034,10 @@ const styles = StyleSheet.create({
     backgroundColor: LINE,
     height: 1
   },
+  sectionDivider: {
+    height: 8,
+    marginVertical: 16
+  },
   successOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
@@ -3932,9 +4054,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 24,
     fontWeight: "700",
-    textShadowColor: "rgba(0,0,0,0.3)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4
+    textShadow: "0px 2px 4px rgba(0,0,0,0.3)"
   },
   bottomNav: {
     alignItems: "center",
