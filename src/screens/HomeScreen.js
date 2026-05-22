@@ -286,7 +286,9 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   }, []);
 
   useEffect(() => {
-    preloadInterstitial().catch(() => {});
+    if (preloadInterstitial) {
+      preloadInterstitial().catch(() => {});
+    }
   }, []);
 
   const updateSettings = (patch) => {

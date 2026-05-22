@@ -1,9 +1,28 @@
-import * as Location from "expo-location";
 import { Platform, View, Text } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+
+let Location = null;
+let MapView = null;
+let Marker = null;
+let PROVIDER_GOOGLE = null;
+
+if (Platform.OS !== "web") {
+  try {
+    Location = require("expo-location");
+  } catch (e) {
+    console.warn("Location not available:", e);
+  }
+  try {
+    const maps = require("react-native-maps");
+    MapView = maps.default;
+    Marker = maps.Marker;
+    PROVIDER_GOOGLE = maps.PROVIDER_GOOGLE;
+  } catch (e) {
+    console.warn("Maps not available:", e);
+  }
+}
 
 export async function getCurrentLocation() {
-  if (Platform.OS === "web") {
+  if (Platform.OS === "web" || !Location) {
     return null;
   }
   const permission = await Location.requestForegroundPermissionsAsync();
@@ -23,7 +42,7 @@ export function formatCoordinates(reminder) {
 }
 
 export function LocationMap({ location, reminders = [], style }) {
-  if (Platform.OS === "web") {
+  if (Platform.OS === "web" || !MapView) {
     return (
       <View style={[style, { justifyContent: "center", alignItems: "center", backgroundColor: "#f0f0f0" }]}>
         <Text>Map not available on web</Text>

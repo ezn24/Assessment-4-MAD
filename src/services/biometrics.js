@@ -1,6 +1,19 @@
-import * as LocalAuthentication from "expo-local-authentication";
+import { Platform } from "react-native";
+
+let LocalAuthentication = null;
+
+if (Platform.OS !== "web") {
+  try {
+    LocalAuthentication = require("expo-local-authentication");
+  } catch (e) {
+    console.warn("LocalAuthentication not available:", e);
+  }
+}
 
 export async function isBiometricAvailable() {
+  if (!LocalAuthentication) {
+    return { available: false, compatible: false, enrolled: false, message: "Biometric not available on web" };
+  }
   try {
     const compatible = await LocalAuthentication.hasHardwareAsync();
     const enrolled = await LocalAuthentication.isEnrolledAsync();
@@ -17,6 +30,9 @@ export async function isBiometricAvailable() {
 }
 
 export async function authenticateBiometric(promptMessage = "Authenticate to access reminders") {
+  if (!LocalAuthentication) {
+    return { success: false, error: "Biometric not available on web" };
+  }
   try {
     const result = await LocalAuthentication.authenticateAsync({
       promptMessage,
@@ -36,6 +52,9 @@ export async function authenticateBiometric(promptMessage = "Authenticate to acc
 }
 
 export async function getSupportedAuthenticationTypes() {
+  if (!LocalAuthentication) {
+    return [];
+  }
   try {
     const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
     return types;
@@ -46,6 +65,9 @@ export async function getSupportedAuthenticationTypes() {
 }
 
 export async function getAuthenticationTypeLabel() {
+  if (!LocalAuthentication) {
+    return "Biometric";
+  }
   const types = await getSupportedAuthenticationTypes();
   if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
     return "Face ID";

@@ -1,6 +1,19 @@
-import * as Network from "expo-network";
+import { Platform } from "react-native";
+
+let Network = null;
+
+if (Platform.OS !== "web") {
+  try {
+    Network = require("expo-network");
+  } catch (e) {
+    console.warn("Network not available:", e);
+  }
+}
 
 export async function getNetworkState() {
+  if (!Network) {
+    return { isConnected: true, type: "web", isInternetReachable: true };
+  }
   try {
     const networkState = await Network.getNetworkStateAsync();
     return {
@@ -20,6 +33,9 @@ export async function isNetworkAvailable() {
 }
 
 export async function getIpAddress() {
+  if (!Network) {
+    return null;
+  }
   try {
     const ip = await Network.getIpAddressAsync();
     return ip;
@@ -30,6 +46,9 @@ export async function getIpAddress() {
 }
 
 export function subscribeToNetworkState(callback) {
+  if (!Network) {
+    return { remove: () => {} };
+  }
   const subscription = Network.addNetworkStateListener((state) => {
     callback({
       isConnected: state.isConnected,
@@ -44,6 +63,9 @@ export async function getNetworkTypeLabel() {
   const state = await getNetworkState();
   if (!state.isConnected) {
     return "Offline";
+  }
+  if (Platform.OS === "web") {
+    return "Web";
   }
   switch (state.type) {
     case Network.NetworkStateType.CELLULAR:

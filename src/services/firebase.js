@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { initializeApp, getApps } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
@@ -70,10 +71,14 @@ export function getFirebaseServices() {
   }
   const app = getApps().length ? getApps()[0] : initializeApp(config);
   let auth;
-  try {
-    auth = initializeAuth(app, { persistence: reactNativeAuthPersistence });
-  } catch (_error) {
+  if (Platform.OS === "web") {
     auth = getAuth(app);
+  } else {
+    try {
+      auth = initializeAuth(app, { persistence: reactNativeAuthPersistence });
+    } catch (_error) {
+      auth = getAuth(app);
+    }
   }
   firebaseServices = {
     app,

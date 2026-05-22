@@ -1,9 +1,22 @@
-import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 import CryptoJS from "crypto-js";
+
+let SecureStore = null;
+
+if (Platform.OS !== "web") {
+  try {
+    SecureStore = require("expo-secure-store");
+  } catch (e) {
+    console.warn("SecureStore not available:", e);
+  }
+}
 
 const ENCRYPTION_KEY = "vizminder-a4-encryption-key";
 
 async function getEncryptionKey() {
+  if (Platform.OS === "web" || !SecureStore) {
+    return "fallback-key-for-web-demo-only";
+  }
   try {
     let key = await SecureStore.getItemAsync(ENCRYPTION_KEY);
     if (!key) {

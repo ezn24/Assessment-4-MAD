@@ -1,6 +1,19 @@
-import * as Battery from "expo-battery";
+import { Platform } from "react-native";
+
+let Battery = null;
+
+if (Platform.OS !== "web") {
+  try {
+    Battery = require("expo-battery");
+  } catch (e) {
+    console.warn("Battery not available:", e);
+  }
+}
 
 export async function getBatteryLevel() {
+  if (!Battery) {
+    return null;
+  }
   try {
     const level = await Battery.getBatteryLevelAsync();
     return Math.round(level * 100);
@@ -11,6 +24,9 @@ export async function getBatteryLevel() {
 }
 
 export async function getBatteryState() {
+  if (!Battery) {
+    return Battery?.BatteryState?.UNKNOWN || 0;
+  }
   try {
     const state = await Battery.getBatteryStateAsync();
     return state;
@@ -26,6 +42,9 @@ export async function isBatteryLow(threshold = 20) {
 }
 
 export async function getBatteryInfo() {
+  if (!Battery) {
+    return null;
+  }
   try {
     const level = await getBatteryLevel();
     const state = await getBatteryState();
@@ -42,6 +61,9 @@ export async function getBatteryInfo() {
 }
 
 export function subscribeToBatteryState(callback) {
+  if (!Battery) {
+    return { remove: () => {} };
+  }
   const subscription = Battery.addBatteryStateListener(({ batteryState }) => {
     callback(batteryState);
   });
@@ -49,6 +71,9 @@ export function subscribeToBatteryState(callback) {
 }
 
 export function subscribeToBatteryLevel(callback) {
+  if (!Battery) {
+    return { remove: () => {} };
+  }
   const subscription = Battery.addBatteryLevelListener(({ batteryLevel }) => {
     callback(Math.round(batteryLevel * 100));
   });

@@ -44,6 +44,7 @@
       "expo-notifications",
       "expo-image-picker",
       "expo-background-task",
+      "expo-secure-store",
       "@react-native-community/datetimepicker"
     ],
     "extra": {

@@ -1,10 +1,31 @@
-import * as SQLite from "expo-sqlite";
+import { Platform } from "react-native";
 import { hydrateReminder, serializeReminder } from "../models/reminder";
 import { encrypt, decrypt } from "./encryption";
 
+let SQLite = null;
+let AsyncStorage = null;
+
+if (Platform.OS !== "web") {
+  try {
+    SQLite = require("expo-sqlite");
+  } catch (e) {
+    console.warn("SQLite not available:", e);
+  }
+} else {
+  try {
+    AsyncStorage = require("@react-native-async-storage/async-storage").default;
+  } catch (e) {
+    console.warn("AsyncStorage not available:", e);
+  }
+}
+
 let dbPromise;
+let webStorage = {};
 
 export async function getDatabase() {
+  if (Platform.OS === "web" || !SQLite) {
+    return { getAllAsync: () => [], runAsync: () => {}, execAsync: () => {} };
+  }
   if (!dbPromise) {
     dbPromise = SQLite.openDatabaseAsync("vizminder-a4.db");
   }
@@ -41,6 +62,9 @@ export async function getDatabase() {
 }
 
 async function migrateReminderColumns(db) {
+  if (Platform.OS === "web" || !SQLite) {
+    return;
+  }
   const columns = await db.getAllAsync("PRAGMA table_info(reminders)");
   const names = new Set(columns.map((column) => column.name));
   const migrations = [
@@ -61,6 +85,19 @@ async function migrateReminderColumns(db) {
 }
 
 export async function listReminders() {
+  if (Platform.OS === "web" || !SQLite) {
+    if (AsyncStorage) {
+      try {
+        const data = await AsyncStorage.getItem("reminders");
+        const reminders = data ? JSON.parse(data) : [];
+        return reminders.map(hydrateReminder);
+      } catch (e) {
+        console.warn("Failed to load from AsyncStorage:", e);
+        return [];
+      }
+    }
+    return Object.values(webStorage).map(hydrateReminder);
+  }
   const db = await getDatabase();
   const rows = await db.getAllAsync("SELECT * FROM reminders ORDER BY scheduledAt ASC");
   const decryptedRows = await Promise.all(
@@ -79,7 +116,6 @@ export async function listReminders() {
 }
 
 export async function upsertReminder(reminder) {
-  const db = await getDatabase();
   const encryptedReminder = { ...reminder };
   if (reminder.title) {
     encryptedReminder.title = await encrypt(reminder.title);
@@ -88,6 +124,29 @@ export async function upsertReminder(reminder) {
     encryptedReminder.description = await encrypt(reminder.description);
   }
   const item = serializeReminder({ ...encryptedReminder, updatedAt: new Date().toISOString() });
+
+  if (Platform.OS === "web" || !SQLite) {
+    if (AsyncStorage) {
+      try {
+        const data = await AsyncStorage.getItem("reminders");
+        const reminders = data ? JSON.parse(data) : [];
+        const index = reminders.findIndex((r) => r.id === item.id);
+        if (index >= 0) {
+          reminders[index] = item;
+        } else {
+          reminders.push(item);
+        }
+        await AsyncStorage.setItem("reminders", JSON.stringify(reminders));
+      } catch (e) {
+        console.warn("Failed to save to AsyncStorage:", e);
+      }
+    } else {
+      webStorage[item.id] = item;
+    }
+    return hydrateReminder(item);
+  }
+
+  const db = await getDatabase();
   await db.runAsync(
     `INSERT OR REPLACE INTO reminders
     (id, title, description, scheduledAt, visualType, emoji, icon, imageUri, important, repeat, repeatUntil, followUpEnabled, followUpCount, followUpIntervalMinutes, timeSet, hasDate, ringtone, completed, latitude, longitude, locationLabel, notificationId, updatedAt)
@@ -122,16 +181,46 @@ export async function upsertReminder(reminder) {
 }
 
 export async function deleteReminder(id) {
+  if (Platform.OS === "web" || !SQLite) {
+    if (AsyncStorage) {
+      try {
+        const data = await AsyncStorage.getItem("reminders");
+        const reminders = data ? JSON.parse(data) : [];
+        const filtered = reminders.filter((r) => r.id !== id);
+        await AsyncStorage.setItem("reminders", JSON.stringify(filtered));
+      } catch (e) {
+        console.warn("Failed to delete from AsyncStorage:", e);
+      }
+    } else {
+      delete webStorage[id];
+    }
+    return;
+  }
   const db = await getDatabase();
   await db.runAsync("DELETE FROM reminders WHERE id = ?", [id]);
 }
 
 export async function clearReminders() {
+  if (Platform.OS === "web" || !SQLite) {
+    if (AsyncStorage) {
+      try {
+        await AsyncStorage.setItem("reminders", "[]");
+      } catch (e) {
+        console.warn("Failed to clear AsyncStorage:", e);
+      }
+    } else {
+      webStorage = {};
+    }
+    return;
+  }
   const db = await getDatabase();
   await db.runAsync("DELETE FROM reminders");
 }
 
 export async function seedIfEmpty() {
+  if (Platform.OS === "web" || !SQLite) {
+    return;
+  }
   const db = await getDatabase();
   // Assessment 4 starts with an empty task list. Remove legacy demo rows from earlier builds only.
   await db.runAsync("DELETE FROM reminders WHERE id IN (?, ?)", ["medication", "bring-keys"]);

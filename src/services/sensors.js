@@ -1,7 +1,22 @@
-import { Accelerometer, Gyroscope } from "expo-sensors";
-import * as Torch from "expo-torch";
+import { Platform } from "react-native";
+
+let Accelerometer, Gyroscope, Torch;
+
+if (Platform.OS !== "web") {
+  try {
+    const sensors = require("expo-sensors");
+    Accelerometer = sensors.Accelerometer;
+    Gyroscope = sensors.Gyroscope;
+    Torch = require("expo-torch");
+  } catch (e) {
+    console.warn("Sensors not available:", e);
+  }
+}
 
 export async function getAccelerometerData() {
+  if (!Accelerometer) {
+    return null;
+  }
   const isAvailable = await Accelerometer.isAvailableAsync();
   if (!isAvailable) {
     return null;
@@ -16,6 +31,9 @@ export async function getAccelerometerData() {
 }
 
 export async function getGyroscopeData() {
+  if (!Gyroscope) {
+    return null;
+  }
   const isAvailable = await Gyroscope.isAvailableAsync();
   if (!isAvailable) {
     return null;
@@ -30,10 +48,16 @@ export async function getGyroscopeData() {
 }
 
 export async function isTorchAvailable() {
+  if (!Torch) {
+    return false;
+  }
   return await Torch.isAvailableAsync();
 }
 
 export async function getTorchAvailability() {
+  if (!Torch) {
+    return { available: false, message: "Torch not available on this device" };
+  }
   const isAvailable = await Torch.isAvailableAsync();
   if (!isAvailable) {
     return { available: false, message: "Torch not available on this device" };
@@ -42,6 +66,9 @@ export async function getTorchAvailability() {
 }
 
 export async function toggleTorch() {
+  if (!Torch) {
+    throw new Error("Torch not available on this device");
+  }
   const isAvailable = await Torch.isAvailableAsync();
   if (!isAvailable) {
     throw new Error("Torch not available on this device");
@@ -55,6 +82,9 @@ export async function toggleTorch() {
 }
 
 export async function setTorchState(turnOn) {
+  if (!Torch) {
+    throw new Error("Torch not available on this device");
+  }
   const isAvailable = await Torch.isAvailableAsync();
   if (!isAvailable) {
     throw new Error("Torch not available on this device");
