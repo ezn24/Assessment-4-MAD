@@ -38,6 +38,13 @@ import {
   signOutUser
 } from "../services/firebase";
 import { cancelNativeAlarm, scheduleNativeAlarm } from "../services/nativeAlarm";
+import { getAccelerometerData, getGyroscopeData, toggleTorch, getTorchAvailability } from "../services/sensors";
+import { getCurrentLocation, LocationMap } from "../services/location";
+import { BannerAdComponent, preloadInterstitial } from "../services/admob";
+import { getBatteryInfo, subscribeToBatteryLevel } from "../services/battery";
+import { isBiometricAvailable, authenticateBiometric } from "../services/biometrics";
+import { getNetworkState, subscribeToNetworkState } from "../services/connectivity";
+import { encryptReminder, decryptReminder } from "../services/encryption";
 
 const PURPLE = "#007AFF";
 const LIGHT_PURPLE = "#E5F1FF";
@@ -206,6 +213,12 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const [deleting, setDeleting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [batteryInfo, setBatteryInfo] = useState(null);
+  const [networkState, setNetworkState] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const settings = { ...DEFAULT_SETTINGS, ...appSettings };
   const activeScheme = settings.themeMode;
   const isDark = typeof isDarkOverride === "boolean" ? isDarkOverride : activeScheme === "dark";
@@ -233,6 +246,36 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
       .then(() => setMessage("Cloud reminders downloaded."))
       .catch((error) => setMessage(error.message || "Cloud download failed."));
   }, [authUser, refreshFromCloud]);
+
+  useEffect(() => {
+    getBatteryInfo().then(setBatteryInfo).catch(() => {});
+    const batterySubscription = subscribeToBatteryLevel((level) => {
+      setBatteryInfo((prev) => prev ? { ...prev, level } : { level, state: null, isLow: level < 20, isCharging: false });
+    });
+    return () => batterySubscription?.remove();
+  }, []);
+
+  useEffect(() => {
+    getNetworkState().then(setNetworkState).catch(() => {});
+    const networkSubscription = subscribeToNetworkState((state) => setNetworkState(state));
+    return () => networkSubscription?.remove();
+  }, []);
+
+  useEffect(() => {
+    getCurrentLocation().then(setCurrentLocation).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    isBiometricAvailable().then((result) => setBiometricAvailable(result.available)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    getTorchAvailability().then((result) => setTorchAvailable(result.available)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    preloadInterstitial().catch(() => {});
+  }, []);
 
   const updateSettings = (patch) => {
     onUpdateSettings?.(patch);
@@ -594,6 +637,20 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   isDark={isDark}
                   palette={palette}
                   onSyncNow={syncNow}
+                  onMessage={setMessage}
+                />
+              ) : tab === "device" ? (
+                <DeviceTab
+                  batteryInfo={batteryInfo}
+                  networkState={networkState}
+                  currentLocation={currentLocation}
+                  biometricAvailable={biometricAvailable}
+                  torchAvailable={torchAvailable}
+                  showMap={showMap}
+                  setShowMap={setShowMap}
+                  reminders={reminders}
+                  isDark={isDark}
+                  palette={palette}
                   onMessage={setMessage}
                 />
               ) : (
@@ -2037,6 +2094,7 @@ function BottomNav({ active, isDark, palette, onChange }) {
     ["schedule", "calendar-month-outline", "Schedule"],
     ["stats", "chart-line", "Stats"],
     ["account", "account-circle-outline", "Account"],
+    ["device", "cellphone-information", "Device"],
     ["settings", "cog-outline", "Settings"]
   ];
 
