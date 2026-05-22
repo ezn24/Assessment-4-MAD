@@ -1311,39 +1311,83 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Account</ScreenTitle>
-      <View style={[styles.accountCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+      <View style={[
+        styles.accountCard, 
+        { 
+          backgroundColor: colors.surface,
+          shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 1,
+          shadowRadius: 8,
+          elevation: 3
+        }, 
+        isDark && styles.materialCardDark
+      ]}>
         <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
-          <MaterialCommunityIcons name="account-outline" size={36} color={colors.primary} />
+          <MaterialCommunityIcons name="account-outline" size={40} color={colors.primary} />
         </View>
         <View>
           <Text style={[styles.accountName, isDark && styles.textOnDark]}>User</Text>
           <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>{accountLabel}</Text>
         </View>
       </View>
-      <ScrollView contentContainerStyle={styles.accountContent}>
+      <ScrollView contentContainerStyle={styles.accountContent} showsVerticalScrollIndicator={false}>
         {!signedIn ? (
-          <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sign in</Text>
+          <View style={[
+            styles.planBlock, 
+            { 
+              backgroundColor: colors.surface,
+              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 1,
+              shadowRadius: 4,
+              elevation: 2
+            }, 
+            isDark && styles.materialCardDark
+          ]}>
+            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sign In</Text>
             <TextInput value={email} onChangeText={setEmail} label="Email" autoCapitalize="none" keyboardType="email-address" style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
             <TextInput value={password} onChangeText={setPassword} label="Password" secureTextEntry style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
             <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Password requires at least 8 characters, 2 letters, and 6 numbers.</Text>
             {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
             <View style={styles.planActions}>
-              <Button mode="outlined" textColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("login")}>Login</Button>
-              <Button mode="contained" buttonColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("register")}>Register</Button>
+              <Button mode="outlined" textColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("login")}>Sign In</Button>
+              <Button mode="contained" buttonColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("register")}>Create Account</Button>
             </View>
           </View>
         ) : (
-          <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Signed in</Text>
+          <View style={[
+            styles.planBlock, 
+            { 
+              backgroundColor: colors.surface,
+              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 1,
+              shadowRadius: 4,
+              elevation: 2
+            }, 
+            isDark && styles.materialCardDark
+          ]}>
+            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Signed In</Text>
             <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>{accountLabel}</Text>
             {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
-            <Button mode="outlined" textColor={colors.primary} onPress={() => signOutUser().catch((error) => setSyncError(error.message))}>Sign out</Button>
+            <Button mode="outlined" textColor={colors.primary} onPress={() => signOutUser().catch((error) => setSyncError(error.message))}>Sign Out</Button>
           </View>
         )}
 
         {signedIn ? (
-        <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+        <View style={[
+          styles.planBlock, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          }, 
+          isDark && styles.materialCardDark
+        ]}>
           <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sync Data</Text>
           <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Completed reminders: {completedCount}</Text>
           <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Sync status: {syncing ? "Syncing" : syncProgress === 1 ? "Synced" : "Idle"}</Text>
@@ -1390,12 +1434,23 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
         <ScreenTitle isDark={isDark}>Theme</ScreenTitle>
-        <ScrollView contentContainerStyle={styles.settingsContent}>
+        <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
           <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
             <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
           </Pressable>
-          <View style={[styles.settingsPanel, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+          <View style={[
+            styles.settingsPanel, 
+            { 
+              backgroundColor: colors.surface,
+              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 1,
+              shadowRadius: 4,
+              elevation: 2
+            }, 
+            isDark && styles.materialCardDark
+          ]}>
             <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Theme mode</Text>
             <View style={styles.segmentedControl}>
               {[
@@ -1430,12 +1485,23 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
         <ScreenTitle isDark={isDark}>Advanced</ScreenTitle>
-        <ScrollView contentContainerStyle={styles.settingsContent}>
+        <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
           <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
             <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
           </Pressable>
-          <View style={[styles.settingsPanel, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+          <View style={[
+            styles.settingsPanel, 
+            { 
+              backgroundColor: colors.surface,
+              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 1,
+              shadowRadius: 4,
+              elevation: 2
+            }, 
+            isDark && styles.materialCardDark
+          ]}>
             <View style={styles.settingsSwitchRow}>
               <View style={styles.settingsCopy}>
                 <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Reminder debug button</Text>
@@ -1460,12 +1526,23 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
         <ScreenTitle isDark={isDark}>Notification</ScreenTitle>
-        <ScrollView contentContainerStyle={styles.settingsContent}>
+        <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
           <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
             <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
           </Pressable>
-          <View style={[styles.settingsPanel, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+          <View style={[
+            styles.settingsPanel, 
+            { 
+              backgroundColor: colors.surface,
+              shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 1,
+              shadowRadius: 4,
+              elevation: 2
+            }, 
+            isDark && styles.materialCardDark
+          ]}>
             <SettingsSwitch
               isDark={isDark}
               colors={colors}
@@ -1551,8 +1628,19 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Settings</ScreenTitle>
-      <ScrollView contentContainerStyle={styles.settingsContent}>
-        <View style={[styles.settingsList, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+      <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
+        <View style={[
+          styles.settingsList, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          }, 
+          isDark && styles.materialCardDark
+        ]}>
           {items.map(([icon, title, copy, action]) => (
             <View key={title}>
               <Pressable android_ripple={{ color: colors.surfaceVariant }} style={styles.settingsRow} onPress={action}>
@@ -1587,19 +1675,31 @@ function SettingsSwitch({ title, description, value, onValueChange, isDark, colo
 function BottomNav({ active, isDark, palette, onChange }) {
   const colors = palette || getPalette({}, isDark);
   const tabs = [
-    ["home", "bell-outline", "Home"],
+    ["home", "bell-outline", "Reminders"],
     ["schedule", "calendar-month-outline", "Schedule"],
     ["account", "account-circle-outline", "Account"],
     ["settings", "cog-outline", "Settings"]
   ];
 
   return (
-    <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.outline }, isDark && styles.bottomNavDark]}>
+    <View style={[
+      styles.bottomNav, 
+      { 
+        backgroundColor: colors.surface, 
+        borderTopColor: colors.outline,
+        shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+        elevation: 4
+      }, 
+      isDark && styles.bottomNavDark
+    ]}>
       {tabs.map(([key, icon, label]) => (
         <Pressable key={key} style={styles.navItem} onPress={() => onChange(key)}>
           <View style={[styles.navIconWrap, active === key && { backgroundColor: colors.primaryContainer, borderRadius: 24 }]}>
             <View style={styles.navIconAnchor}>
-              <MaterialCommunityIcons name={icon} size={24} color={active === key ? colors.primary : colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name={icon} size={26} color={active === key ? colors.primary : colors.onSurfaceVariant} />
               {key === "home" ? <View style={styles.notificationDot} /> : null}
             </View>
           </View>
