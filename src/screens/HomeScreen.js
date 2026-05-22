@@ -452,22 +452,28 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     }
     isDeletingRef.current = true;
     console.log("confirmDeleteReminder called for:", reminder.id);
+    const doDelete = () => {
+      console.log("Delete confirmed for:", reminder.id);
+      setDeleting(true);
+      deleteReminderWithUndo(reminder, afterDelete);
+      setTimeout(() => {
+        isDeletingRef.current = false;
+      }, 500);
+    };
+    const doCancel = () => {
+      isDeletingRef.current = false;
+    };
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm("Delete reminder? This removes the reminder and cancels its scheduled alarm.")) {
+        doDelete();
+      } else {
+        doCancel();
+      }
+      return;
+    }
     Alert.alert("Delete reminder?", "This removes the reminder and cancels its scheduled alarm.", [
-      { 
-        text: "Cancel", 
-        style: "cancel",
-        onPress: () => {
-          isDeletingRef.current = false;
-        }
-      },
-      { text: "Delete", style: "destructive", onPress: () => {
-        console.log("Delete confirmed for:", reminder.id);
-        setDeleting(true);
-        deleteReminderWithUndo(reminder, afterDelete);
-        setTimeout(() => {
-          isDeletingRef.current = false;
-        }, 500);
-      }}
+      { text: "Cancel", style: "cancel", onPress: doCancel },
+      { text: "Delete", style: "destructive", onPress: doDelete }
     ]);
   };
 
@@ -1972,66 +1978,54 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
         )}
 
         {signedIn ? (
-        <View style={[
-          styles.planBlock, 
-          { 
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          }, 
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sync Data</Text>
-          <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Completed reminders: {completedCount}</Text>
-          <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Sync status: {syncing ? "Syncing" : syncProgress === 1 ? "Synced" : "Idle"}</Text>
-          <View style={[styles.progressTrack, { backgroundColor: colors.surfaceVariant }]}>
-            <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.round(syncProgress * 100)}%` }]} />
-          </View>
-          <Button mode="contained" buttonColor={colors.primary} loading={syncing} disabled={syncing} onPress={runSync}>Sync now</Button>
-          <View style={styles.syncList}>
-            {syncRows.length ? syncRows.map((row) => (
-              <View key={row.id} style={styles.syncRow}>
-                <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>{row.title}</Text>
-                <Text style={[styles.syncStatus, row.status === "Synced" ? styles.syncOk : styles.syncWarn]}>{row.status}</Text>
-              </View>
-            )) : <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>Press sync to inspect current Firestore status.</Text>}
-          </View>
-        </View>
+        <Card style={styles.planBlock} elevation={2} mode="elevated">
+          <Card.Content>
+            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sync Data</Text>
+            <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Completed reminders: {completedCount}</Text>
+            <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Sync status: {syncing ? "Syncing" : syncProgress === 1 ? "Synced" : "Idle"}</Text>
+            <View style={[styles.progressTrack, { backgroundColor: colors.surfaceVariant }]}>
+              <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.round(syncProgress * 100)}%` }]} />
+            </View>
+            <Button mode="contained" buttonColor={colors.primary} loading={syncing} disabled={syncing} onPress={runSync}>Sync now</Button>
+            <View style={styles.syncList}>
+              {syncRows.length ? syncRows.map((row) => (
+                <View key={row.id} style={styles.syncRow}>
+                  <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>{row.title}</Text>
+                  <Text style={[styles.syncStatus, row.status === "Synced" ? styles.syncOk : styles.syncWarn]}>{row.status}</Text>
+                </View>
+              )) : <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>Press sync to inspect current Firestore status.</Text>}
+            </View>
+          </Card.Content>
+        </Card>
         ) : null}
 
         <View style={[styles.sectionDivider, { backgroundColor: colors.outline }]} />
 
-        <View style={[
-          styles.planBlock,
-          {
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          },
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Settings</Text>
-          <View style={styles.settingsList}>
-            {[
-              ["palette", "Theme", "Light, dark, and Material color options.", () => setSettingsPage("theme")],
-              ["cog", "Advanced", "Debug controls and native alarm notes.", () => setSettingsPage("advanced")],
-              ["bell-ring", "Notification", "Notification permissions, alert sound, and system settings.", () => setSettingsPage("notification")],
-              ["alert-circle", "Reset Reminders", "Clear all reminders on this device.", onReset]
-            ].map(([icon, title, copy, action]) => (
-              <View key={title}>
-                <Pressable android_ripple={{ color: colors.surfaceVariant }} style={styles.settingsRow} onPress={action}>
-                  <MaterialCommunityIcons name={icon} size={24} color={colors.onSurfaceVariant} />
-                  <View style={styles.settingsCopy}>
-                    <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>{title}</Text>
-                    <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{copy}</Text>
-                  </View>
-                  <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
-                </Pressable>
-                <Divider style={styles.settingsDivider} />
-              </View>
-            ))}
-          </View>
-        </View>
+        <Card style={styles.planBlock} elevation={2} mode="elevated">
+          <Card.Content>
+            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Settings</Text>
+            <View style={styles.settingsList}>
+              {[
+                ["palette", "Theme", "Light, dark, and Material color options.", () => setSettingsPage("theme")],
+                ["cog", "Advanced", "Debug controls and native alarm notes.", () => setSettingsPage("advanced")],
+                ["bell-ring", "Notification", "Notification permissions, alert sound, and system settings.", () => setSettingsPage("notification")],
+                ["alert-circle", "Reset Reminders", "Clear all reminders on this device.", onReset]
+              ].map(([icon, title, copy, action]) => (
+                <View key={title}>
+                  <Pressable android_ripple={{ color: colors.surfaceVariant }} style={styles.settingsRow} onPress={action}>
+                    <MaterialCommunityIcons name={icon} size={24} color={colors.onSurfaceVariant} />
+                    <View style={styles.settingsCopy}>
+                      <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>{title}</Text>
+                      <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{copy}</Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
+                  </Pressable>
+                  <Divider style={styles.settingsDivider} />
+                </View>
+              ))}
+            </View>
+          </Card.Content>
+        </Card>
       </ScrollView>
     </View>
   );
@@ -3453,6 +3447,12 @@ const styles = StyleSheet.create({
     bottom: 90,
     right: 16,
     borderRadius: 16
+  },
+  accountCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 20
   },
   testButton: {
     alignItems: "center",
