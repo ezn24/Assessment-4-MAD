@@ -744,7 +744,11 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
-      <ScreenTitle isDark={isDark}>Schedule</ScreenTitle>
+      <ScreenTitle isDark={isDark} action={
+        <Pressable style={[styles.titleActionButton, { backgroundColor: colors.primary }]} onPress={() => onEdit(createDraftReminder())}>
+          <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
+        </Pressable>
+      }>Schedule</ScreenTitle>
       <ScrollView contentContainerStyle={styles.scheduleContent} showsVerticalScrollIndicator={false}>
         <View style={[
           styles.materialCard, 
@@ -801,7 +805,9 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
                     {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
                   </Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={colors.onSurfaceVariant} />
+                <Pressable style={styles.editIconButton} onPress={() => onEdit(reminder)}>
+                  <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.onSurfaceVariant} />
+                </Pressable>
               </Pressable>
             ))
           ) : (
