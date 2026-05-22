@@ -169,6 +169,7 @@ function createDraftReminder() {
     followUpIntervalMinutes: 5,
     ringtone: "alarm",
     important: true,
+    priority: "medium",
     completed: false,
     imageUri: null,
     streak: 0
@@ -558,10 +559,19 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   reminders={reminders}
                   isDark={isDark}
                   palette={palette}
+                  onRefresh={onRefresh}
+                  refreshing={refreshing}
                   onEdit={(reminder) => {
                     setEditMode("edit");
                     setEditing({ ...reminder });
                   }}
+                />
+              ) : tab === "stats" ? (
+                <StatsTab
+                  reminders={reminders}
+                  completedCount={completedCount}
+                  isDark={isDark}
+                  palette={palette}
                 />
               ) : tab === "account" ? (
                 <AccountTab
@@ -633,16 +643,25 @@ function ScreenTitle({ children, action, isDark = false }) {
 
 function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, palette, onEdit, onToggle, onAdd, onDelete, onRefresh, refreshing }) {
   const [query, setQuery] = useState("");
+  const [showTodayOnly, setShowTodayOnly] = useState(false);
   const colors = palette || getPalette(themeColors, isDark);
   const primary = colors.primary;
+  
+  const today = format(new Date(), "yyyy-MM-dd");
   const visibleReminders = reminders.filter((reminder) => {
     const haystack = `${reminder.title} ${reminder.description || ""}`.toLowerCase();
-    return haystack.includes(query.trim().toLowerCase());
+    const matchesQuery = haystack.includes(query.trim().toLowerCase());
+    const matchesToday = showTodayOnly ? format(parseISO(reminder.scheduledAt), "yyyy-MM-dd") === today : true;
+    return matchesQuery && matchesToday;
   });
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
-      <ScreenTitle isDark={isDark}>Reminders</ScreenTitle>
+      <ScreenTitle isDark={isDark} action={
+        <Pressable style={[styles.titleActionButton, { backgroundColor: showTodayOnly ? colors.primary : colors.surfaceVariant }]} onPress={() => setShowTodayOnly(!showTodayOnly)}>
+          <MaterialCommunityIcons name="calendar-today" size={20} color={showTodayOnly ? "#FFFFFF" : colors.onSurfaceVariant} />
+        </Pressable>
+      }>Reminders</ScreenTitle>
       <ScrollView 
         style={styles.flex} 
         contentContainerStyle={styles.homeList} 
@@ -775,7 +794,18 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
           <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
         </Pressable>
       }>Schedule</ScreenTitle>
-      <ScrollView contentContainerStyle={styles.scheduleContent} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={styles.scheduleContent} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         <View style={[
           styles.materialCard, 
           { 
@@ -823,18 +853,29 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
           <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>{format(parseISO(selectedDate), DATE_DISPLAY_FORMAT)}</Text>
           {selectedReminders.length ? (
             selectedReminders.map((reminder) => (
-              <Pressable key={reminder.id} style={styles.scheduleRow} onPress={() => onEdit(reminder)}>
-                <VisualCue reminder={reminder} size={48} iconSize={24} compact palette={colors} />
-                <View style={styles.scheduleCopy}>
-                  <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
-                  <Text style={[styles.taskTime, { color: colors.primary }]}>
-                    {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
-                  </Text>
-                </View>
-                <Pressable style={styles.editIconButton} onPress={() => onEdit(reminder)}>
-                  <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.onSurfaceVariant} />
+              <Swipeable
+                key={reminder.id}
+                overshootRight={false}
+                renderRightActions={() => (
+                  <View style={[styles.swipeEditAction, { backgroundColor: colors.primary }]}>
+                    <MaterialCommunityIcons name="pencil" size={24} color="#FFFFFF" />
+                  </View>
+                )}
+                onSwipeableOpen={() => onEdit(reminder)}
+              >
+                <Pressable style={styles.scheduleRow} onPress={() => onEdit(reminder)}>
+                  <VisualCue reminder={reminder} size={48} iconSize={24} compact palette={colors} />
+                  <View style={styles.scheduleCopy}>
+                    <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
+                    <Text style={[styles.taskTime, { color: colors.primary }]}>
+                      {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
+                    </Text>
+                  </View>
+                  <Pressable style={styles.editIconButton} onPress={() => onEdit(reminder)}>
+                    <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.onSurfaceVariant} />
+                  </Pressable>
                 </Pressable>
-              </Pressable>
+              </Swipeable>
             ))
           ) : (
             <View style={styles.emptySchedule}>
@@ -1137,6 +1178,18 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           </View>
           <Switch value={Boolean(reminder.important)} color={colors.primary} onValueChange={(important) => onUpdate({ important })} />
         </View>
+        <EditField
+          isDark={isDark}
+          palette={colors}
+          label="Priority"
+          value={reminder.priority || "medium"}
+          onPress={() => {
+            const priorities = ["high", "medium", "low"];
+            const currentIndex = priorities.indexOf(reminder.priority || "medium");
+            const nextIndex = (currentIndex + 1) % priorities.length;
+            onUpdate({ priority: priorities[nextIndex] });
+          }}
+        />
 
         <View style={styles.formActions}>
           {onDelete ? (
@@ -1332,6 +1385,111 @@ function EditTextField({ label, value, isDark = false, palette, onChangeText, mu
         placeholderTextColor={colors.onSurfaceVariant}
         theme={{ colors: { primary: colors.primary, onSurfaceVariant: colors.onSurfaceVariant } }}
       />
+    </View>
+  );
+}
+
+function StatsTab({ reminders, completedCount, isDark, palette }) {
+  const colors = palette || getPalette({}, isDark);
+  const totalReminders = reminders.length;
+  const completionRate = totalReminders > 0 ? Math.round((completedCount / totalReminders) * 100) : 0;
+  const importantReminders = reminders.filter(r => r.important).length;
+  const completedImportant = reminders.filter(r => r.important && r.completed).length;
+  const todayReminders = reminders.filter(r => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    return format(parseISO(r.scheduledAt), "yyyy-MM-dd") === today;
+  }).length;
+  const streak = reminders.reduce((max, r) => Math.max(max, r.streak || 0), 0);
+
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+      <ScreenTitle isDark={isDark}>Stats</ScreenTitle>
+      <ScrollView contentContainerStyle={styles.statsContent} showsVerticalScrollIndicator={false}>
+        <View style={[
+          styles.statsCard, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 1,
+            shadowRadius: 8,
+            elevation: 3
+          }, 
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Completion Rate</Text>
+          <View style={styles.statsValueContainer}>
+            <Text style={[styles.statsValue, { color: colors.primary }]}>{completionRate}%</Text>
+            <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>{completedCount} of {totalReminders} completed</Text>
+          </View>
+          <View style={[styles.progressBar, { backgroundColor: colors.surfaceVariant }]}>
+            <View style={[styles.progressFill, { width: `${completionRate}%`, backgroundColor: colors.primary }]} />
+          </View>
+        </View>
+
+        <View style={[
+          styles.statsCard, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 1,
+            shadowRadius: 8,
+            elevation: 3
+          }, 
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Important Reminders</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: colors.primary }]}>{importantReminders}</Text>
+              <Text style={[styles.statLabel, isDark && styles.mutedOnDark]}>Total</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: colors.success || SUCCESS }]}>{completedImportant}</Text>
+              <Text style={[styles.statLabel, isDark && styles.mutedOnDark]}>Completed</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={[
+          styles.statsCard, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 1,
+            shadowRadius: 8,
+            elevation: 3
+          }, 
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Today's Reminders</Text>
+          <View style={styles.statsValueContainer}>
+            <Text style={[styles.statsValue, { color: colors.primary }]}>{todayReminders}</Text>
+            <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>Reminders scheduled for today</Text>
+          </View>
+        </View>
+
+        <View style={[
+          styles.statsCard, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 1,
+            shadowRadius: 8,
+            elevation: 3
+          }, 
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Best Streak</Text>
+          <View style={styles.statsValueContainer}>
+            <Text style={[styles.statsValue, { color: colors.warning || "#FF9500" }]}>{streak}</Text>
+            <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>Consecutive days completed</Text>
+          </View>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -1765,6 +1923,7 @@ function BottomNav({ active, isDark, palette, onChange }) {
   const tabs = [
     ["home", "bell-outline", "Reminders"],
     ["schedule", "calendar-month-outline", "Schedule"],
+    ["stats", "chart-line", "Stats"],
     ["account", "account-circle-outline", "Account"],
     ["settings", "cog-outline", "Settings"]
   ];
@@ -2384,6 +2543,59 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 96
   },
+  statsContent: {
+    padding: 16,
+    paddingBottom: 96
+  },
+  statsCard: {
+    borderRadius: 20,
+    marginBottom: 16,
+    padding: 20
+  },
+  statsTitle: {
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 16
+  },
+  statsValueContainer: {
+    alignItems: "center",
+    marginBottom: 12
+  },
+  statsValue: {
+    fontSize: 48,
+    fontWeight: "700"
+  },
+  statsLabel: {
+    color: MUTED,
+    fontSize: 14,
+    marginTop: 4
+  },
+  progressBar: {
+    borderRadius: 8,
+    height: 8,
+    overflow: "hidden"
+  },
+  progressFill: {
+    borderRadius: 8,
+    height: "100%"
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around"
+  },
+  statItem: {
+    alignItems: "center"
+  },
+  statNumber: {
+    fontSize: 36,
+    fontWeight: "700"
+  },
+  statLabel: {
+    color: MUTED,
+    fontSize: 13,
+    marginTop: 4
+  },
   scheduleRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -2414,6 +2626,18 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     paddingHorizontal: 18,
     width: 112
+  },
+  swipeEditAction: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    borderRadius: 18,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    marginRight: 14,
+    marginVertical: 6,
+    paddingHorizontal: 18,
+    width: 80
   },
   swipeDeleteText: {
     color: "#FFFFFF",
