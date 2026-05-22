@@ -37,17 +37,17 @@ import {
 } from "../services/firebase";
 import { cancelNativeAlarm, scheduleNativeAlarm } from "../services/nativeAlarm";
 
-const PURPLE = "#4F378B";
-const LIGHT_PURPLE = "#EADDFF";
-const BG = "#FCF8FF";
-const TEXT = "#1D1B20";
-const MUTED = "#49454F";
-const LINE = "#CAC4D0";
-const SURFACE = "#FFFBFE";
-const SURFACE_VARIANT = "#F3EDF7";
-const PRIMARY_CONTAINER = "#EADDFF";
-const ERROR = "#BA1A1A";
-const SUCCESS = "#146C2E";
+const PURPLE = "#007AFF";
+const LIGHT_PURPLE = "#E5F1FF";
+const BG = "#F5F5F7";
+const TEXT = "#1D1D1F";
+const MUTED = "#86868B";
+const LINE = "#E5E5EA";
+const SURFACE = "#FFFFFF";
+const SURFACE_VARIANT = "#F2F2F7";
+const PRIMARY_CONTAINER = "#E5F1FF";
+const ERROR = "#FF3B30";
+const SUCCESS = "#34C759";
 const DATE_DISPLAY_FORMAT = "yyyy/MM/dd";
 const DATE_INPUT_PLACEHOLDER = "yyyy/mm/dd";
 const REMINDER_CHANNEL_ID = "vizminder-a4-reminders";
@@ -595,12 +595,12 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
-      <ScreenTitle isDark={isDark}>Home</ScreenTitle>
-      <ScrollView style={styles.flex} contentContainerStyle={styles.homeList}>
+      <ScreenTitle isDark={isDark}>Reminders</ScreenTitle>
+      <ScrollView style={styles.flex} contentContainerStyle={styles.homeList} showsVerticalScrollIndicator={false}>
         {!loaded ? (
           <View style={styles.emptyHome}>
             <View style={[styles.emptyVisual, { backgroundColor: colors.primaryContainer }]}>
-              <MaterialCommunityIcons name="database-clock-outline" size={42} color={primary} />
+              <MaterialCommunityIcons name="database-clock-outline" size={48} color={primary} />
             </View>
             <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>Loading reminders</Text>
             <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Restoring local data first.</Text>
@@ -608,15 +608,14 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
         ) : !visibleReminders.length ? (
           <View style={styles.emptyHome}>
             <View style={[styles.emptyVisual, { backgroundColor: colors.primaryContainer }]}>
-              <MaterialCommunityIcons name="bell-plus-outline" size={42} color={primary} />
+              <MaterialCommunityIcons name="bell-plus-outline" size={48} color={primary} />
             </View>
             <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>No reminders yet</Text>
-            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Use the add button below to create your first visual reminder.</Text>
+            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Tap the + button to create your first reminder.</Text>
           </View>
         ) : null}
         {visibleReminders.map((reminder, index) => (
-          <Animatable.View key={reminder.id} animation="fadeInUp" delay={index * 70} duration={320} useNativeDriver>
-            {/* react-native-gesture-handler gives this list a native-feeling swipe delete gesture. */}
+          <Animatable.View key={reminder.id} animation="fadeInUp" delay={index * 50} duration={280} useNativeDriver>
             <Swipeable
               overshootRight={false}
               renderRightActions={() => (
@@ -625,13 +624,27 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                 />
               )}
             >
-            <Pressable style={[styles.taskRow, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]} onPress={() => onEdit(reminder)}>
+            <Pressable 
+              style={[
+                styles.taskRow, 
+                { 
+                  backgroundColor: colors.surface,
+                  shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 1,
+                  shadowRadius: 8,
+                  elevation: 3
+                },
+                isDark && styles.cardOnDark
+              ]} 
+              onPress={() => onEdit(reminder)}
+            >
               <View style={styles.visualBubble}>
-                <VisualCue reminder={reminder} size={44} iconSize={22} compact palette={colors} />
+                <VisualCue reminder={reminder} size={48} iconSize={24} compact palette={colors} />
               </View>
               <View style={styles.taskCopy}>
                 <Text style={[styles.taskTime, { color: primary }]}>
-                  {format(parseISO(reminder.scheduledAt), "h:mm a")} - {getCountdownLabel(reminder.scheduledAt)}
+                  {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
                 </Text>
                 <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
                 {reminder.description ? <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>{reminder.description}</Text> : null}
@@ -639,7 +652,7 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
               <View style={styles.taskActions}>
               {showReminderDebugButton ? (
                 <Pressable style={styles.testButton} onPress={() => onTestReminder(reminder)}>
-                  <MaterialCommunityIcons name="play-circle-outline" size={22} color={primary} />
+                  <MaterialCommunityIcons name="play-circle-outline" size={24} color={primary} />
                 </Pressable>
               ) : null}
                 <Switch value={!reminder.completed} color={primary} onValueChange={(value) => onToggle(reminder, !value)} />
@@ -650,8 +663,8 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
         ))}
 
       </ScrollView>
-      <View style={[styles.searchDock, { backgroundColor: colors.surfaceVariant }, isDark && styles.surfaceVariantOnDark]}>
-        <MaterialCommunityIcons name="magnify" size={22} color={colors.onSurfaceVariant} />
+      <View style={[styles.searchDock, { backgroundColor: colors.surface }, isDark && styles.surfaceVariantOnDark]}>
+        <MaterialCommunityIcons name="magnify" size={20} color={colors.onSurfaceVariant} />
         <TextInput
           value={query}
           onChangeText={setQuery}
@@ -666,7 +679,7 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
           theme={{ colors: { primary, onSurfaceVariant: colors.onSurfaceVariant } }}
         />
         <Pressable style={[styles.addButton, { backgroundColor: primary }]} onPress={onAdd}>
-          <MaterialCommunityIcons name="plus" size={26} color="#FFFFFF" />
+          <MaterialCommunityIcons name="plus" size={24} color="#FFFFFF" />
         </Pressable>
       </View>
     </View>
@@ -693,9 +706,20 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Schedule</ScreenTitle>
-      <ScrollView contentContainerStyle={styles.scheduleContent}>
-        <View style={[styles.materialCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Month task distribution</Text>
+      <ScrollView contentContainerStyle={styles.scheduleContent} showsVerticalScrollIndicator={false}>
+        <View style={[
+          styles.materialCard, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 1,
+            shadowRadius: 8,
+            elevation: 3
+          }, 
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Calendar</Text>
           <Calendar
             markedDates={selectedMarkedDates}
             onDayPress={(day) => setSelectedDate(day.dateString)}
@@ -709,30 +733,41 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
               selectedDayBackgroundColor: colors.primary,
               todayTextColor: colors.primary,
               arrowColor: colors.primary,
-              textDayFontSize: 12,
-              textMonthFontSize: 14,
-              textDayHeaderFontSize: 11
+              textDayFontSize: 13,
+              textMonthFontSize: 15,
+              textDayHeaderFontSize: 12
             }}
           />
         </View>
-        <View style={[styles.materialCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>{format(parseISO(selectedDate), DATE_DISPLAY_FORMAT)} reminders</Text>
+        <View style={[
+          styles.materialCard, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 1,
+            shadowRadius: 8,
+            elevation: 3
+          }, 
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>{format(parseISO(selectedDate), DATE_DISPLAY_FORMAT)}</Text>
           {selectedReminders.length ? (
             selectedReminders.map((reminder) => (
               <Pressable key={reminder.id} style={styles.scheduleRow} onPress={() => onEdit(reminder)}>
-                <VisualCue reminder={reminder} size={44} iconSize={22} compact palette={colors} />
+                <VisualCue reminder={reminder} size={48} iconSize={24} compact palette={colors} />
                 <View style={styles.scheduleCopy}>
                   <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
                   <Text style={[styles.taskTime, { color: colors.primary }]}>
-                    {format(parseISO(reminder.scheduledAt), "h:mm a")} - {getCountdownLabel(reminder.scheduledAt)}
+                    {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
                   </Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="chevron-right" size={20} color={colors.onSurfaceVariant} />
               </Pressable>
             ))
           ) : (
             <View style={styles.emptySchedule}>
-              <MaterialCommunityIcons name="calendar-blank-outline" size={28} color={colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="calendar-blank-outline" size={32} color={colors.onSurfaceVariant} />
               <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>No reminders on this date.</Text>
             </View>
           )}
@@ -1960,9 +1995,9 @@ const styles = StyleSheet.create({
   },
   screenTitle: {
     color: TEXT,
-    fontSize: 28,
-    fontWeight: "600",
-    letterSpacing: 0.15
+    fontSize: 34,
+    fontWeight: "700",
+    letterSpacing: -0.5
   },
   titleAction: {
     position: "absolute",
@@ -2069,28 +2104,29 @@ const styles = StyleSheet.create({
     marginRight: "auto"
   },
   homeList: {
-    paddingBottom: 102,
-    paddingTop: 4
+    paddingBottom: 100,
+    paddingTop: 8
   },
   emptyHome: {
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 36,
-    paddingTop: 96
+    gap: 12,
+    paddingHorizontal: 32,
+    paddingTop: 80
   },
   emptyVisual: {
     alignItems: "center",
     backgroundColor: LIGHT_PURPLE,
-    borderRadius: 46,
-    height: 92,
+    borderRadius: 50,
+    height: 100,
     justifyContent: "center",
-    width: 92
+    width: 100
   },
   emptyTitle: {
     color: TEXT,
-    fontSize: 24,
-    fontWeight: "700",
-    marginTop: 8
+    fontSize: 22,
+    fontWeight: "600",
+    marginTop: 12,
+    letterSpacing: -0.3
   },
   materialCard: {
     backgroundColor: SURFACE,
@@ -2148,44 +2184,46 @@ const styles = StyleSheet.create({
   taskRow: {
     alignItems: "center",
     backgroundColor: SURFACE,
-    borderColor: LINE,
-    borderRadius: 18,
-    borderWidth: 1,
+    borderRadius: 16,
     flexDirection: "row",
-    marginHorizontal: 14,
-    marginVertical: 6,
-    minHeight: 70,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    minHeight: 72,
     overflow: "visible",
-    paddingHorizontal: 16
+    paddingHorizontal: 16,
+    paddingVertical: 12
   },
   visualBubble: {
     alignItems: "center",
     backgroundColor: "transparent",
-    borderRadius: 22,
-    height: 44,
+    borderRadius: 24,
+    height: 48,
     justifyContent: "center",
     overflow: "visible",
-    width: 44
+    width: 48
   },
   taskCopy: {
     flex: 1,
-    paddingHorizontal: 14
+    paddingHorizontal: 12
   },
   taskTime: {
     color: PURPLE,
-    fontSize: 12,
-    fontWeight: "700"
+    fontSize: 13,
+    fontWeight: "500",
+    marginBottom: 2
   },
   taskTitle: {
     color: TEXT,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "600",
-    lineHeight: 22
+    lineHeight: 22,
+    letterSpacing: -0.2
   },
   taskDescription: {
     color: MUTED,
-    fontSize: 13,
-    lineHeight: 18
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 2
   },
   taskActions: {
     alignItems: "center",
@@ -2202,34 +2240,37 @@ const styles = StyleSheet.create({
   },
   searchDock: {
     alignItems: "center",
-    backgroundColor: SURFACE_VARIANT,
-    borderColor: LINE,
-    borderWidth: 1,
-    borderRadius: 28,
-    bottom: 78,
+    backgroundColor: SURFACE,
+    borderRadius: 20,
+    bottom: 80,
     flexDirection: "row",
-    height: 56,
+    height: 52,
     justifyContent: "space-between",
-    left: 18,
+    left: 16,
     paddingLeft: 16,
     paddingRight: 8,
     position: "absolute",
-    right: 18
+    right: 16,
+    shadowColor: "rgba(0,0,0,0.12)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    elevation: 4
   },
   searchDockInput: {
     backgroundColor: "transparent",
     flex: 1,
-    height: 46,
-    marginHorizontal: 6,
+    height: 44,
+    marginHorizontal: 8,
     paddingHorizontal: 0
   },
   addButton: {
     alignItems: "center",
     backgroundColor: PURPLE,
-    borderRadius: 20,
-    height: 42,
+    borderRadius: 16,
+    height: 40,
     justifyContent: "center",
-    width: 48
+    width: 44
   },
   reminderScreen: {
     alignItems: "center",
