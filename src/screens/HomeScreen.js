@@ -698,6 +698,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
       >
         {message}
       </Snackbar>
+      {tab === "home" && <BannerAdComponent style={styles.bannerAd} />}
     </SafeAreaView>
   );
 }
@@ -2083,6 +2084,266 @@ function SettingsSwitch({ title, description, value, onValueChange, isDark, colo
         <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{description}</Text>
       </View>
       <Switch value={value} color={colors.primary} onValueChange={onValueChange} />
+    </View>
+  );
+}
+
+function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvailable, torchAvailable, showMap, setShowMap, reminders, isDark, palette, onMessage }) {
+  const colors = palette || getPalette({}, isDark);
+  const [torchOn, setTorchOn] = useState(false);
+
+  const handleTorchToggle = async () => {
+    try {
+      const newState = await toggleTorch();
+      setTorchOn(newState);
+      onMessage(newState ? "Torch turned on" : "Torch turned off");
+    } catch (error) {
+      onMessage("Failed to toggle torch");
+    }
+  };
+
+  const handleBiometricAuth = async () => {
+    try {
+      const result = await authenticateBiometric("Authenticate to access device features");
+      if (result.success) {
+        onMessage("Biometric authentication successful");
+      } else {
+        onMessage("Biometric authentication failed");
+      }
+    } catch (error) {
+      onMessage("Biometric authentication error");
+    }
+  };
+
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+      <ScreenTitle isDark={isDark}>Device Features</ScreenTitle>
+      <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
+        <View style={[
+          styles.settingsPanel,
+          {
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          },
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Battery</Text>
+          <View style={styles.deviceInfoRow}>
+            <MaterialCommunityIcons name="battery-charging" size={24} color={colors.primary} />
+            <View style={styles.deviceInfoText}>
+              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
+                {batteryInfo?.level !== null ? `${batteryInfo.level}%` : "Unknown"}
+              </Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                {batteryInfo?.isCharging ? "Charging" : "Not charging"}
+                {batteryInfo?.isLow ? " - Low battery" : ""}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={[
+          styles.settingsPanel,
+          {
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          },
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Network</Text>
+          <View style={styles.deviceInfoRow}>
+            <MaterialCommunityIcons name={networkState?.isConnected ? "wifi" : "wifi-off"} size={24} color={colors.primary} />
+            <View style={styles.deviceInfoText}>
+              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
+                {networkState?.isConnected ? "Connected" : "Offline"}
+              </Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                {networkState?.type === "cellular" ? "Cellular" : networkState?.type === "wifi" ? "WiFi" : "Unknown"}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={[
+          styles.settingsPanel,
+          {
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          },
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Location</Text>
+          <View style={styles.deviceInfoRow}>
+            <MaterialCommunityIcons name="map-marker" size={24} color={colors.primary} />
+            <View style={styles.deviceInfoText}>
+              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
+                {currentLocation ? `${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}` : "Not available"}
+              </Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                GPS coordinates
+              </Text>
+            </View>
+          </View>
+          <Button
+            mode="outlined"
+            onPress={() => setShowMap(!showMap)}
+            style={styles.mapButton}
+            icon="map"
+          >
+            {showMap ? "Hide Map" : "Show Map"}
+          </Button>
+          {showMap && currentLocation && (
+            <View style={styles.mapContainer}>
+              <LocationMap
+                location={currentLocation}
+                reminders={reminders}
+                style={styles.map}
+              />
+            </View>
+          )}
+        </View>
+
+        <View style={[
+          styles.settingsPanel,
+          {
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          },
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Biometrics</Text>
+          <View style={styles.deviceInfoRow}>
+            <MaterialCommunityIcons name={biometricAvailable ? "fingerprint" : "fingerprint-off"} size={24} color={colors.primary} />
+            <View style={styles.deviceInfoText}>
+              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
+                {biometricAvailable ? "Available" : "Not available"}
+              </Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                Fingerprint or Face ID
+              </Text>
+            </View>
+          </View>
+          {biometricAvailable && (
+            <Button
+              mode="outlined"
+              onPress={handleBiometricAuth}
+              style={styles.deviceButton}
+              icon="fingerprint"
+            >
+              Test Biometric
+            </Button>
+          )}
+        </View>
+
+        <View style={[
+          styles.settingsPanel,
+          {
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          },
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Torch</Text>
+          <View style={styles.deviceInfoRow}>
+            <MaterialCommunityIcons name={torchAvailable ? "flashlight" : "flashlight-off"} size={24} color={colors.primary} />
+            <View style={styles.deviceInfoText}>
+              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
+                {torchAvailable ? "Available" : "Not available"}
+              </Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                {torchOn ? "On" : "Off"}
+              </Text>
+            </View>
+          </View>
+          {torchAvailable && (
+            <Button
+              mode="outlined"
+              onPress={handleTorchToggle}
+              style={styles.deviceButton}
+              icon={torchOn ? "flashlight-off" : "flashlight"}
+            >
+              {torchOn ? "Turn Off" : "Turn On"}
+            </Button>
+          )}
+        </View>
+
+        <View style={[
+          styles.settingsPanel,
+          {
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          },
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Sensors</Text>
+          <View style={styles.deviceInfoRow}>
+            <MaterialCommunityIcons name="accelerometer" size={24} color={colors.primary} />
+            <View style={styles.deviceInfoText}>
+              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Accelerometer</Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                Motion detection available
+              </Text>
+            </View>
+          </View>
+          <View style={styles.deviceInfoRow}>
+            <MaterialCommunityIcons name="rotate-3d" size={24} color={colors.primary} />
+            <View style={styles.deviceInfoText}>
+              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Gyroscope</Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                Rotation detection available
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={[
+          styles.settingsPanel,
+          {
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          },
+          isDark && styles.materialCardDark
+        ]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Security</Text>
+          <View style={styles.deviceInfoRow}>
+            <MaterialCommunityIcons name="lock" size={24} color={colors.primary} />
+            <View style={styles.deviceInfoText}>
+              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Data Encryption</Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                AES encryption enabled for sensitive data
+              </Text>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -3734,6 +3995,37 @@ const styles = StyleSheet.create({
     color: MUTED,
     fontSize: 12,
     lineHeight: 18
+  },
+  deviceInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 8
+  },
+  deviceInfoText: {
+    flex: 1
+  },
+  mapButton: {
+    marginTop: 12
+  },
+  mapContainer: {
+    marginTop: 12,
+    borderRadius: 12,
+    overflow: "hidden",
+    height: 200
+  },
+  map: {
+    width: "100%",
+    height: "100%"
+  },
+  deviceButton: {
+    marginTop: 12
+  },
+  bannerAd: {
+    position: "absolute",
+    bottom: 80,
+    left: 0,
+    right: 0
   }
 });
 
