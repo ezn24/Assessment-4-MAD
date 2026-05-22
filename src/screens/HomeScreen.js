@@ -419,6 +419,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
             mode={editMode}
             isDark={isDark}
             palette={palette}
+            saving={saving}
+            deleting={deleting}
             onUpdate={(patch) => {
               setEditing((current) => ({ ...current, ...patch }));
             }}
@@ -580,6 +582,14 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
           fadeOut
           onAnimationEnd={() => setCelebrating(false)}
         />
+      ) : null}
+      {showSuccess ? (
+        <Animatable.View animation="bounceIn" duration={600} style={styles.successOverlay}>
+          <View style={styles.successIcon}>
+            <MaterialCommunityIcons name="check-circle" size={64} color={SUCCESS} />
+          </View>
+          <Text style={styles.successText}>Saved!</Text>
+        </Animatable.View>
       ) : null}
       <Snackbar
         visible={Boolean(message)}
@@ -829,7 +839,7 @@ function ReminderPrompt({ reminder, isDark, palette, onNo, onYes }) {
   );
 }
 
-function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachImage, onSave, onCancel, onDelete }) {
+function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachImage, onSave, onCancel, onDelete, saving, deleting }) {
   const colors = palette || getPalette({}, isDark);
   const [timeOpen, setTimeOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
@@ -1094,10 +1104,19 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
               Delete
             </Button>
           ) : null}
-          <Button mode="contained" buttonColor={colors.primary} textColor={colors.onPrimary} style={styles.actionButton} onPress={onSave}>
-            Save
+          <Button 
+            mode="contained" 
+            buttonColor={colors.primary} 
+            textColor={colors.onPrimary} 
+            style={styles.actionButton} 
+            onPress={onSave}
+            loading={saving}
+            icon={saving ? undefined : "content-save"}
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save"}
           </Button>
-          <Button mode="outlined" textColor={colors.onSurfaceVariant} style={styles.actionButton} onPress={onCancel}>
+          <Button mode="outlined" textColor={colors.onSurfaceVariant} style={styles.actionButton} onPress={onCancel} disabled={saving}>
             Cancel
           </Button>
         </View>
@@ -2871,6 +2890,26 @@ const styles = StyleSheet.create({
   settingsDivider: {
     backgroundColor: LINE,
     height: 1
+  },
+  successOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.3)",
+    zIndex: 1000
+  },
+  successIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16
+  },
+  successText: {
+    color: "#FFFFFF",
+    fontSize: 24,
+    fontWeight: "700",
+    textShadowColor: "rgba(0,0,0,0.3)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4
   },
   bottomNav: {
     alignItems: "center",
