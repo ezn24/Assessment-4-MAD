@@ -19,8 +19,6 @@ import * as Animatable from "react-native-animatable";
 // expo-haptics adds native tactile feedback to completion, toggle, and delete actions.
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-// expo-notifications schedules real local notifications when reminder time arrives.
-import * as Notifications from "expo-notifications";
 // Native date/time picker is kept as an escape hatch beside the custom Material-style picker.
 import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -45,7 +43,7 @@ import { isBiometricAvailable, authenticateBiometric } from "../services/biometr
 import { getNetworkState, subscribeToNetworkState } from "../services/connectivity";
 import { encryptReminder, decryptReminder } from "../services/encryption";
 
-let BannerAdComponent, preloadInterstitial;
+let BannerAdComponent, preloadInterstitial, Notifications;
 if (Platform.OS !== "web") {
   try {
     const admob = require("../services/admob");
@@ -53,6 +51,19 @@ if (Platform.OS !== "web") {
     preloadInterstitial = admob.preloadInterstitial;
   } catch (e) {
     console.warn("AdMob not available:", e);
+  }
+  try {
+    Notifications = require("expo-notifications");
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true
+      })
+    });
+  } catch (e) {
+    console.warn("Notifications not available:", e);
   }
 }
 
@@ -88,15 +99,6 @@ const RINGTONE_OPTIONS = [
 ];
 const FOLLOW_UP_COUNTS = [0, 1, 2, 3, 5, 10];
 const FOLLOW_UP_INTERVALS = [1, 3, 5, 10, 15, 30];
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true
-  })
-});
 const ICON_OPTIONS = [
   "bell-outline",
   "key",
@@ -342,10 +344,14 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
 
   useEffect(() => {
     configureNotificationChannel().catch(() => {});
-    if (Platform.OS === "android") {
+    if (Platform.OS === "android" && Notifications) {
       // Android reminders now use the native full-screen alarm path.
       // Clear legacy Expo reminder schedules from older APKs so they do not ring in parallel.
       Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+    }
+
+    if (!Notifications) {
+      return;
     }
 
     const received = Notifications.addNotificationReceivedListener((notification) => {
@@ -371,7 +377,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   }, []);
 
   const handlePromptResponse = async (reminder, completed) => {
-    if (reminder.notificationId) {
+    if (reminder.notificationId && Notifications) {
       Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
     }
     cancelNativeAlarm(reminder.id).catch(() => {});
@@ -421,7 +427,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const deleteReminderWithUndo = async (reminder, afterDelete) => {
     setDeleting(true);
     try {
-      if (reminder.notificationId) {
+      if (reminder.notificationId && Notifications) {
         await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
       }
       await cancelNativeAlarm(reminder.id).catch(() => false);
@@ -454,7 +460,9 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
         text: "Reset",
         style: "destructive",
         onPress: async () => {
-          await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+          if (Notifications) {
+            await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+          }
           await Promise.all(reminders.map((reminder) => cancelNativeAlarm(reminder.id).catch(() => false)));
           resetPrototype();
           setUndoDelete(null);
@@ -542,7 +550,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   setMessage(notificationId ? "Reminder saved and notification scheduled." : "Reminder saved.");
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
                 } else {
-                  if (editing.notificationId) {
+                  if (editing.notificationId && Notifications) {
                     await Notifications.cancelScheduledNotificationAsync(editing.notificationId).catch(() => {});
                   }
                   await cancelNativeAlarm(editing.id).catch(() => false);
@@ -599,7 +607,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   onToggle={async (reminder, completed) =>
                     {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-                      if (reminder.notificationId) {
+                      if (reminder.notificationId && Notifications) {
                         await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
                       }
                       await cancelNativeAlarm(reminder.id).catch(() => false);

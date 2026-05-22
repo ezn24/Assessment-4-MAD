@@ -1,29 +1,17 @@
-import { Platform } from "react-native";
+import * as Notifications from "expo-notifications";
 
 export const REMINDER_CHANNEL_ID = "vizminder-a4-reminders";
 
-let Notifications = null;
-
-if (Platform.OS !== "web") {
-  try {
-    Notifications = require("expo-notifications");
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-        shouldShowBanner: true,
-        shouldShowList: true
-      })
-    });
-  } catch (e) {
-    console.warn("Notifications not available:", e);
-  }
-}
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true
+  })
+});
 
 export async function configureNotifications() {
-  if (Platform.OS === "web" || !Notifications) {
-    return true;
-  }
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL_ID, {
       name: "VizMinder reminders",
@@ -45,9 +33,6 @@ export async function configureNotifications() {
 }
 
 export async function scheduleReminder(reminder) {
-  if (!Notifications) {
-    return null;
-  }
   const granted = await configureNotifications();
   if (!granted || reminder.completed) {
     return null;
@@ -75,15 +60,12 @@ export async function scheduleReminder(reminder) {
 }
 
 export async function cancelReminderNotification(notificationId) {
-  if (notificationId && Notifications) {
+  if (notificationId) {
     await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {});
   }
 }
 
 export function listenForReminderNotifications(onReminderId) {
-  if (!Notifications) {
-    return () => {};
-  }
   const received = Notifications.addNotificationReceivedListener((notification) => {
     const reminderId = notification.request.content.data?.reminderId;
     if (reminderId) {
