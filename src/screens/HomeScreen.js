@@ -7,6 +7,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -190,6 +191,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const settings = { ...DEFAULT_SETTINGS, ...appSettings };
   const activeScheme = settings.themeMode;
   const isDark = typeof isDarkOverride === "boolean" ? isDarkOverride : activeScheme === "dark";
@@ -220,6 +222,14 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
 
   const updateSettings = (patch) => {
     onUpdateSettings?.(patch);
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    if (authUser && !authUser.isAnonymous) {
+      await refreshFromCloud(authUser.uid).catch(() => {});
+    }
+    setTimeout(() => setRefreshing(false), 500);
   };
 
   const scheduleReminderAlarms = async (reminder) => {
@@ -502,7 +512,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
           />
         ) : (
           <>
-            <Animatable.View key={tab} animation="fadeIn" duration={220} style={styles.flex} useNativeDriver>
+            <Animatable.View key={tab} animation="fadeInRight" duration={300} style={styles.flex} useNativeDriver>
               {tab === "home" ? (
                 <HomeTab
                   reminders={reminders}
@@ -513,6 +523,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   isDark={isDark}
                   themeColors={themeColors}
                   palette={palette}
+                  onRefresh={onRefresh}
+                  refreshing={refreshing}
                   onEdit={(reminder) => {
                     setEditMode("edit");
                     setEditing({ ...reminder });
@@ -619,7 +631,7 @@ function ScreenTitle({ children, action, isDark = false }) {
   );
 }
 
-function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, palette, onEdit, onToggle, onAdd, onDelete }) {
+function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, palette, onEdit, onToggle, onAdd, onDelete, onRefresh, refreshing }) {
   const [query, setQuery] = useState("");
   const colors = palette || getPalette(themeColors, isDark);
   const primary = colors.primary;
@@ -631,23 +643,36 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Reminders</ScreenTitle>
-      <ScrollView style={styles.flex} contentContainerStyle={styles.homeList} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.flex} 
+        contentContainerStyle={styles.homeList} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {!loaded ? (
-          <View style={styles.emptyHome}>
+          <Animatable.View animation="fadeIn" duration={400} style={styles.emptyHome}>
             <View style={[styles.emptyVisual, { backgroundColor: colors.primaryContainer }]}>
-              <MaterialCommunityIcons name="database-clock-outline" size={48} color={primary} />
+              <MaterialCommunityIcons name="loading" size={64} color={primary} />
             </View>
             <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>Loading reminders</Text>
-            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Restoring local data first.</Text>
-          </View>
+            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Restoring your local data...</Text>
+          </Animatable.View>
         ) : !visibleReminders.length ? (
-          <View style={styles.emptyHome}>
+          <Animatable.View animation="fadeInUp" duration={500} style={styles.emptyHome}>
             <View style={[styles.emptyVisual, { backgroundColor: colors.primaryContainer }]}>
-              <MaterialCommunityIcons name="bell-plus-outline" size={48} color={primary} />
+              <MaterialCommunityIcons name="bell-ring-outline" size={72} color={primary} />
             </View>
             <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>No reminders yet</Text>
-            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Tap the + button to create your first reminder.</Text>
-          </View>
+            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Tap the + button to create your first reminder</Text>
+            <Text style={[styles.emptySubtext, isDark && styles.mutedOnDark]}>Stay organized and never forget important tasks</Text>
+          </Animatable.View>
         ) : null}
         {visibleReminders.map((reminder, index) => (
           <Animatable.View key={reminder.id} animation="fadeInUp" delay={index * 50} duration={280} useNativeDriver>
@@ -726,7 +751,7 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
   );
 }
 
-function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
+function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefresh, refreshing }) {
   const colors = palette || getPalette({}, isDark);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [visibleMonth, setVisibleMonth] = useState(format(new Date(), "yyyy-MM"));
@@ -2312,7 +2337,7 @@ const styles = StyleSheet.create({
   },
   emptyHome: {
     alignItems: "center",
-    gap: 12,
+    gap: 16,
     paddingHorizontal: 32,
     paddingTop: 80
   },
@@ -2320,16 +2345,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: LIGHT_PURPLE,
     borderRadius: 50,
-    height: 100,
+    height: 120,
     justifyContent: "center",
-    width: 100
+    width: 120
   },
   emptyTitle: {
     color: TEXT,
     fontSize: 22,
     fontWeight: "600",
-    marginTop: 12,
-    letterSpacing: -0.3
+    marginTop: 8
+  },
+  emptyText: {
+    color: MUTED,
+    fontSize: 16,
+    textAlign: "center"
+  },
+  emptySubtext: {
+    color: MUTED,
+    fontSize: 14,
+    marginTop: 4,
+    opacity: 0.7,
+    textAlign: "center"
   },
   materialCard: {
     backgroundColor: SURFACE,
