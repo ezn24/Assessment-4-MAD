@@ -1,6 +1,5 @@
 import { Platform } from "react-native";
 import { hydrateReminder, serializeReminder } from "../models/reminder";
-import { encrypt, decrypt } from "./encryption";
 
 let SQLite = null;
 let AsyncStorage = null;
@@ -100,30 +99,11 @@ export async function listReminders() {
   }
   const db = await getDatabase();
   const rows = await db.getAllAsync("SELECT * FROM reminders ORDER BY scheduledAt ASC");
-  const decryptedRows = await Promise.all(
-    rows.map(async (row) => {
-      const decrypted = { ...row };
-      if (row.title) {
-        decrypted.title = await decrypt(row.title);
-      }
-      if (row.description) {
-        decrypted.description = await decrypt(row.description);
-      }
-      return decrypted;
-    })
-  );
-  return decryptedRows.map(hydrateReminder);
+  return rows.map(hydrateReminder);
 }
 
 export async function upsertReminder(reminder) {
-  const encryptedReminder = { ...reminder };
-  if (reminder.title) {
-    encryptedReminder.title = await encrypt(reminder.title);
-  }
-  if (reminder.description) {
-    encryptedReminder.description = await encrypt(reminder.description);
-  }
-  const item = serializeReminder({ ...encryptedReminder, updatedAt: new Date().toISOString() });
+  const item = serializeReminder({ ...reminder, updatedAt: new Date().toISOString() });
 
   if (Platform.OS === "web" || !SQLite) {
     if (AsyncStorage) {

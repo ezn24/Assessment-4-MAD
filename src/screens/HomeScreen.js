@@ -199,12 +199,9 @@ function createDraftReminder() {
     followUpIntervalMinutes: 5,
     ringtone: "alarm",
     important: true,
-    priority: "medium",
-    category: "General",
     completed: false,
     imageUri: null,
-    streak: 0,
-    location: null
+    streak: 0
   };
 }
 
@@ -254,9 +251,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
       return;
     }
     lastCloudUserRef.current = authUser.uid;
-    refreshFromCloud(authUser.uid)
-      .then(() => setMessage("Cloud reminders downloaded."))
-      .catch((error) => setMessage(error.message || "Cloud download failed."));
+    refreshFromCloud(authUser.uid).catch(() => {});
   }, [authUser, refreshFromCloud]);
 
   useEffect(() => {
@@ -446,9 +441,11 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   };
 
   const confirmDeleteReminder = (reminder, afterDelete) => {
+    console.log("confirmDeleteReminder called for:", reminder.id);
     Alert.alert("Delete reminder?", "This removes the reminder and cancels its scheduled alarm.", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: () => {
+        console.log("Delete confirmed for:", reminder.id);
         setDeleting(true);
         deleteReminderWithUndo(reminder, afterDelete);
       }}
@@ -575,7 +572,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                 setTimeout(() => setShowSuccess(false), 1500);
                 setTimeout(() => setEditing(null), 300);
               } catch (error) {
-                setMessage("Failed to save reminder.");
+                console.error("Save reminder error:", error);
+                setMessage(`Failed to save reminder: ${error.message || error}`);
               } finally {
                 setSaving(false);
               }
@@ -780,14 +778,6 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
         style={styles.flex}
         contentContainerStyle={styles.homeList}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
         data={visibleReminders}
         keyExtractor={(item) => item.id}
         ListEmptyComponent={
@@ -849,11 +839,6 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                   <View style={styles.taskBadges}>
                     {reminder.priority === "high" && (
                       <MaterialCommunityIcons name="flag" size={16} color={colors.error || ERROR} />
-                    )}
-                    {reminder.category && reminder.category !== "General" && (
-                      <View style={[styles.categoryBadge, { backgroundColor: CATEGORY_OPTIONS.find(c => c.name === reminder.category)?.color || "#86868B" }]}>
-                        <Text style={styles.categoryBadgeText}>{reminder.category.charAt(0)}</Text>
-                      </View>
                     )}
                   </View>
                 </View>
@@ -1035,7 +1020,10 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
 
 function SwipeDeleteAction({ onPress }) {
   return (
-    <Pressable style={styles.swipeDeleteAction} onPress={onPress}>
+    <Pressable style={styles.swipeDeleteAction} onPress={() => {
+      console.log("Swipe delete pressed");
+      onPress();
+    }}>
       <MaterialCommunityIcons name="delete-outline" size={24} color="#FFFFFF" />
       <Text style={styles.swipeDeleteText}>Delete</Text>
     </Pressable>
@@ -1368,33 +1356,6 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
             onUpdate({ priority: priorities[nextIndex] });
           }}
         />
-        <EditField
-          isDark={isDark}
-          palette={colors}
-          label="Category"
-          value={reminder.category || "General"}
-          onPress={() => {
-            const categories = CATEGORY_OPTIONS.map(c => c.name);
-            const currentIndex = categories.indexOf(reminder.category || "General");
-            const nextIndex = (currentIndex + 1) % categories.length;
-            onUpdate({ category: categories[nextIndex] });
-          }}
-        />
-        <EditField
-          isDark={isDark}
-          palette={colors}
-          label="Location"
-          value={reminder.location || "None"}
-          onPress={() => {
-            if (reminder.location) {
-              onUpdate({ location: null });
-            } else {
-              Alert.alert("Location", "Location-based reminders require geofencing. This feature will be implemented with location permissions.");
-            }
-          }}
-          onClear={reminder.location ? () => onUpdate({ location: null }) : undefined}
-        />
-
         <View style={styles.formActions}>
           {onDelete ? (
             <Button 
@@ -2630,6 +2591,9 @@ async function configureNotificationChannel() {
 }
 
 async function ensureNotificationPermission() {
+  if (!Notifications) {
+    return false;
+  }
   await configureNotificationChannel();
   const current = await Notifications.getPermissionsAsync();
   if (current.granted) {
@@ -2647,6 +2611,9 @@ async function ensureNotificationPermission() {
 }
 
 async function scheduleReminderNotification(reminder, settings = DEFAULT_SETTINGS) {
+  if (!Notifications) {
+    return null;
+  }
   if (reminder.timeSet === false || reminder.completed) {
     return null;
   }

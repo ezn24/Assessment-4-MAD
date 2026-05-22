@@ -55,9 +55,24 @@ export function formatCoordinates(reminder) {
 
 export function LocationMap({ location, reminders = [], style }) {
   if (Platform.OS === "web" || !MapView) {
+    if (!location || !location.latitude || !location.longitude) {
+      return (
+        <View style={[style, { justifyContent: "center", alignItems: "center", backgroundColor: "#f0f0f0" }]}>
+          <Text>Location not available</Text>
+        </View>
+      );
+    }
     return (
       <View style={[style, { justifyContent: "center", alignItems: "center", backgroundColor: "#f0f0f0" }]}>
-        <Text>Map not available on web</Text>
+        <Text style={{ fontSize: 16, marginBottom: 8 }}>Current Location</Text>
+        <Text style={{ fontSize: 14, color: "#666" }}>
+          {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+        </Text>
+        <Text style={{ fontSize: 12, color: "#999", marginTop: 8 }}>
+          Open in map: <Text style={{ color: "#007AFF", textDecorationLine: "underline" }}>
+            https://maps.google.com/?q={location.latitude},{location.longitude}
+          </Text>
+        </Text>
       </View>
     );
   }

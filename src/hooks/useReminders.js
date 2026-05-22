@@ -48,14 +48,18 @@ function getCurrentFirebaseUserId() {
 async function tryCloudSync(reminders) {
   const userId = getCurrentFirebaseUserId();
   if (userId) {
-    await syncRemindersToFirestore(userId, reminders).catch(() => {});
+    await syncRemindersToFirestore(userId, reminders).catch((error) => {
+      console.error("Firebase sync failed:", error);
+    });
   }
 }
 
 async function tryCloudSave(reminder) {
   const userId = getCurrentFirebaseUserId();
   if (userId) {
-    await saveReminderToFirestore(userId, reminder).catch(() => {});
+    await saveReminderToFirestore(userId, reminder).catch((error) => {
+      console.error("Firebase save failed:", error);
+    });
   }
 }
 
@@ -86,7 +90,9 @@ export function useReminders() {
     ]);
     const merged = mergeReminders(stored, cloud);
     await persistMergedReminders(merged);
-    await syncRemindersToFirestore(userId, merged).catch(() => {});
+    await syncRemindersToFirestore(userId, merged).catch((error) => {
+      console.error("Firebase sync failed:", error);
+    });
     setReminders(merged);
     return merged;
   }, [persistMergedReminders, reminders]);
@@ -136,7 +142,9 @@ export function useReminders() {
       );
       const changed = next.find((item) => item.id === id);
       if (changed) {
-        upsertReminder(changed).catch(() => {});
+        upsertReminder(changed).catch((error) => {
+          console.error("Local storage save failed:", error);
+        });
         tryCloudSave(changed);
       }
       return next;
@@ -148,7 +156,9 @@ export function useReminders() {
       const next = items.map((item) => (item.id === id ? { ...item, imageUri, visualType: "image" } : item));
       const changed = next.find((item) => item.id === id);
       if (changed) {
-        upsertReminder(changed).catch(() => {});
+        upsertReminder(changed).catch((error) => {
+          console.error("Local storage save failed:", error);
+        });
         tryCloudSave(changed);
       }
       return next;
@@ -160,7 +170,9 @@ export function useReminders() {
       const next = items.map((item) => (item.id === id ? normalizeReminder({ ...item, ...patch }) : item));
       const changed = next.find((item) => item.id === id);
       if (changed) {
-        upsertReminder(changed).catch(() => {});
+        upsertReminder(changed).catch((error) => {
+          console.error("Local storage save failed:", error);
+        });
         tryCloudSave(changed);
       }
       return next;
@@ -168,8 +180,11 @@ export function useReminders() {
   }, [replaceReminderState]);
 
   const deleteReminder = useCallback((id) => {
+    console.log("Deleting reminder:", id);
     replaceReminderState((items) => items.filter((item) => item.id !== id));
-    deleteStoredReminder(id).catch(() => {});
+    deleteStoredReminder(id).catch((error) => {
+      console.error("Local storage delete failed:", error);
+    });
     tryCloudDelete(id);
   }, [replaceReminderState]);
 
@@ -197,7 +212,9 @@ export function useReminders() {
       ...draft
     });
     replaceReminderState((items) => [nextReminder, ...items]);
-    upsertReminder(nextReminder).catch(() => {});
+    upsertReminder(nextReminder).catch((error) => {
+      console.error("Local storage save failed:", error);
+    });
     tryCloudSave(nextReminder);
     return nextReminder;
   }, [replaceReminderState]);
