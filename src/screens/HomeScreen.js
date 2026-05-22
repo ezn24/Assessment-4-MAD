@@ -2,6 +2,7 @@
 import {
   Alert,
   BackHandler,
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -105,6 +106,16 @@ const ICON_OPTIONS = [
   "umbrella-outline",
   "lightbulb-outline"
 ];
+const CATEGORY_OPTIONS = [
+  { name: "General", color: "#86868B" },
+  { name: "Work", color: "#007AFF" },
+  { name: "Personal", color: "#34C759" },
+  { name: "Health", color: "#FF9500" },
+  { name: "Shopping", color: "#FF2D55" },
+  { name: "Finance", color: "#5856D6" },
+  { name: "Social", color: "#FF9F0A" },
+  { name: "Learning", color: "#30D158" }
+];
 const EMOJI_OPTIONS = [
   "\u{1F514}",
   "\u{1F511}",
@@ -170,9 +181,11 @@ function createDraftReminder() {
     ringtone: "alarm",
     important: true,
     priority: "medium",
+    category: "General",
     completed: false,
     imageUri: null,
-    streak: 0
+    streak: 0,
+    location: null
   };
 }
 
@@ -662,9 +675,9 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
           <MaterialCommunityIcons name="calendar-today" size={20} color={showTodayOnly ? "#FFFFFF" : colors.onSurfaceVariant} />
         </Pressable>
       }>Reminders</ScreenTitle>
-      <ScrollView 
-        style={styles.flex} 
-        contentContainerStyle={styles.homeList} 
+      <FlatList
+        style={styles.flex}
+        contentContainerStyle={styles.homeList}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -674,27 +687,30 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
             colors={[colors.primary]}
           />
         }
-      >
-        {!loaded ? (
-          <Animatable.View animation="fadeIn" duration={400} style={styles.emptyHome}>
-            <View style={[styles.emptyVisual, { backgroundColor: colors.primaryContainer }]}>
-              <MaterialCommunityIcons name="loading" size={64} color={primary} />
-            </View>
-            <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>Loading reminders</Text>
-            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Restoring your local data...</Text>
-          </Animatable.View>
-        ) : !visibleReminders.length ? (
-          <Animatable.View animation="fadeInUp" duration={500} style={styles.emptyHome}>
-            <View style={[styles.emptyVisual, { backgroundColor: colors.primaryContainer }]}>
-              <MaterialCommunityIcons name="bell-ring-outline" size={72} color={primary} />
-            </View>
-            <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>No reminders yet</Text>
-            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Tap the + button to create your first reminder</Text>
-            <Text style={[styles.emptySubtext, isDark && styles.mutedOnDark]}>Stay organized and never forget important tasks</Text>
-          </Animatable.View>
-        ) : null}
-        {visibleReminders.map((reminder, index) => (
-          <Animatable.View key={reminder.id} animation="fadeInUp" delay={index * 50} duration={280} useNativeDriver>
+        data={visibleReminders}
+        keyExtractor={(item) => item.id}
+        ListEmptyComponent={
+          !loaded ? (
+            <Animatable.View animation="fadeIn" duration={400} style={styles.emptyHome}>
+              <View style={[styles.emptyVisual, { backgroundColor: colors.primaryContainer }]}>
+                <MaterialCommunityIcons name="loading" size={64} color={primary} />
+              </View>
+              <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>Loading reminders</Text>
+              <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Restoring your local data...</Text>
+            </Animatable.View>
+          ) : (
+            <Animatable.View animation="fadeInUp" duration={500} style={styles.emptyHome}>
+              <View style={[styles.emptyVisual, { backgroundColor: colors.primaryContainer }]}>
+                <MaterialCommunityIcons name="bell-ring-outline" size={72} color={primary} />
+              </View>
+              <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>No reminders yet</Text>
+              <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Tap the + button to create your first reminder</Text>
+              <Text style={[styles.emptySubtext, isDark && styles.mutedOnDark]}>Stay organized and never forget important tasks</Text>
+            </Animatable.View>
+          )
+        }
+        renderItem={({ item: reminder, index }) => (
+          <Animatable.View animation="fadeInUp" delay={index * 50} duration={280} useNativeDriver>
             <Swipeable
               overshootRight={false}
               renderRightActions={() => (
@@ -717,14 +733,29 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                 isDark && styles.cardOnDark
               ]} 
               onPress={() => onEdit(reminder)}
+              accessibilityLabel={`Reminder: ${reminder.title}`}
+              accessibilityHint={reminder.completed ? "Completed. Double tap to edit." : "Not completed. Double tap to edit."}
+              accessibilityRole="button"
             >
               <View style={styles.visualBubble}>
                 <VisualCue reminder={reminder} size={48} iconSize={24} compact palette={colors} />
               </View>
               <View style={styles.taskCopy}>
-                <Text style={[styles.taskTime, { color: primary }]}>
-                  {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
-                </Text>
+                <View style={styles.taskHeader}>
+                  <Text style={[styles.taskTime, { color: primary }]}>
+                    {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
+                  </Text>
+                  <View style={styles.taskBadges}>
+                    {reminder.priority === "high" && (
+                      <MaterialCommunityIcons name="flag" size={16} color={colors.error || ERROR} />
+                    )}
+                    {reminder.category && reminder.category !== "General" && (
+                      <View style={[styles.categoryBadge, { backgroundColor: CATEGORY_OPTIONS.find(c => c.name === reminder.category)?.color || "#86868B" }]}>
+                        <Text style={styles.categoryBadgeText}>{reminder.category.charAt(0)}</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
                 <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
                 {reminder.description ? <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>{reminder.description}</Text> : null}
               </View>
@@ -737,14 +768,19 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                 <Pressable style={styles.editIconButton} onPress={() => onEdit(reminder)}>
                   <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.onSurfaceVariant} />
                 </Pressable>
-                <Switch value={!reminder.completed} color={primary} onValueChange={(value) => onToggle(reminder, !value)} />
+                <Switch 
+                  value={!reminder.completed} 
+                  color={primary} 
+                  onValueChange={(value) => onToggle(reminder, !value)}
+                  accessibilityLabel={reminder.completed ? "Mark as incomplete" : "Mark as complete"}
+                  accessibilityRole="switch"
+                />
               </View>
             </Pressable>
             </Swipeable>
           </Animatable.View>
-        ))}
-
-      </ScrollView>
+        )}
+      />
       <View style={[styles.searchDock, { backgroundColor: colors.surface }, isDark && styles.surfaceVariantOnDark]}>
         <MaterialCommunityIcons name="magnify" size={20} color={colors.onSurfaceVariant} />
         <TextInput
@@ -759,9 +795,16 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
           textColor={colors.onSurface}
           placeholderTextColor={colors.onSurfaceVariant}
           theme={{ colors: { primary, onSurfaceVariant: colors.onSurfaceVariant } }}
+          accessibilityLabel="Search reminders"
+          accessibilityHint="Type to filter reminders by title or description"
         />
         <Animatable.View animation="pulse" iterationCount="infinite" duration={2000}>
-          <Pressable style={[styles.addButton, { backgroundColor: primary }]} onPress={onAdd}>
+          <Pressable 
+            style={[styles.addButton, { backgroundColor: primary }]} 
+            onPress={onAdd}
+            accessibilityLabel="Add new reminder"
+            accessibilityRole="button"
+          >
             <MaterialCommunityIcons name="plus" size={24} color="#FFFFFF" />
           </Pressable>
         </Animatable.View>
@@ -774,6 +817,7 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
   const colors = palette || getPalette({}, isDark);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [visibleMonth, setVisibleMonth] = useState(format(new Date(), "yyyy-MM"));
+  const [viewMode, setViewMode] = useState("month");
   const selectedReminders = reminders.filter((reminder) => shouldShowReminderOnDate(reminder, selectedDate));
   const scheduleMarkedDates = buildScheduleMarkedDates(reminders, visibleMonth, colors.primary);
   const selectedMarkedDates = {
@@ -790,9 +834,17 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark} action={
-        <Pressable style={[styles.titleActionButton, { backgroundColor: colors.primary }]} onPress={() => onEdit(createDraftReminder())}>
-          <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
-        </Pressable>
+        <View style={styles.titleActionRow}>
+          <Pressable style={[styles.titleActionButton, { backgroundColor: viewMode === "month" ? colors.primary : colors.surfaceVariant }]} onPress={() => setViewMode("month")}>
+            <MaterialCommunityIcons name="calendar-month" size={20} color={viewMode === "month" ? "#FFFFFF" : colors.onSurfaceVariant} />
+          </Pressable>
+          <Pressable style={[styles.titleActionButton, { backgroundColor: viewMode === "week" ? colors.primary : colors.surfaceVariant }]} onPress={() => setViewMode("week")}>
+            <MaterialCommunityIcons name="calendar-week" size={20} color={viewMode === "week" ? "#FFFFFF" : colors.onSurfaceVariant} />
+          </Pressable>
+          <Pressable style={[styles.titleActionButton, { backgroundColor: colors.primary }]} onPress={() => onEdit(createDraftReminder())}>
+            <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
+          </Pressable>
+        </View>
       }>Schedule</ScreenTitle>
       <ScrollView 
         contentContainerStyle={styles.scheduleContent} 
@@ -898,8 +950,24 @@ function SwipeDeleteAction({ onPress }) {
   );
 }
 
-function ReminderPrompt({ reminder, isDark, palette, onNo, onYes }) {
+function ReminderPrompt({ reminder, isDark, palette, onNo, onYes, onSnooze }) {
   const colors = palette || getPalette({}, isDark);
+  const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false);
+  
+  const snoozeOptions = [
+    { label: "5 min", minutes: 5 },
+    { label: "15 min", minutes: 15 },
+    { label: "30 min", minutes: 30 },
+    { label: "1 hour", minutes: 60 },
+    { label: "2 hours", minutes: 120 }
+  ];
+
+  const handleSnooze = (minutes) => {
+    const newTime = new Date(new Date().getTime() + minutes * 60000).toISOString();
+    onSnooze(newTime);
+    setSnoozeMenuOpen(false);
+  };
+
   return (
     <Animatable.View animation="fadeInUp" duration={260} style={[styles.reminderScreen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle isDark={isDark}>Reminder</ScreenTitle>
@@ -916,6 +984,24 @@ function ReminderPrompt({ reminder, isDark, palette, onNo, onYes }) {
           <MaterialCommunityIcons name="check" size={36} color={colors.primary} />
         </Pressable>
       </View>
+      {onSnooze && (
+        <View style={styles.snoozeSection}>
+          <Pressable style={[styles.snoozeButton, { backgroundColor: colors.surfaceVariant }]} onPress={() => setSnoozeMenuOpen(!snoozeMenuOpen)}>
+            <MaterialCommunityIcons name="clock-outline" size={20} color={colors.onSurfaceVariant} />
+            <Text style={[styles.snoozeButtonText, isDark && styles.textOnDark]}>Snooze</Text>
+            <MaterialCommunityIcons name={snoozeMenuOpen ? "chevron-up" : "chevron-down"} size={20} color={colors.onSurfaceVariant} />
+          </Pressable>
+          {snoozeMenuOpen && (
+            <View style={[styles.snoozeMenu, { backgroundColor: colors.surface }]}>
+              {snoozeOptions.map((option) => (
+                <Pressable key={option.minutes} style={styles.snoozeOption} onPress={() => handleSnooze(option.minutes)}>
+                  <Text style={[styles.snoozeOptionText, isDark && styles.textOnDark]}>{option.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
     </Animatable.View>
   );
 }
@@ -1189,6 +1275,32 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
             const nextIndex = (currentIndex + 1) % priorities.length;
             onUpdate({ priority: priorities[nextIndex] });
           }}
+        />
+        <EditField
+          isDark={isDark}
+          palette={colors}
+          label="Category"
+          value={reminder.category || "General"}
+          onPress={() => {
+            const categories = CATEGORY_OPTIONS.map(c => c.name);
+            const currentIndex = categories.indexOf(reminder.category || "General");
+            const nextIndex = (currentIndex + 1) % categories.length;
+            onUpdate({ category: categories[nextIndex] });
+          }}
+        />
+        <EditField
+          isDark={isDark}
+          palette={colors}
+          label="Location"
+          value={reminder.location || "None"}
+          onPress={() => {
+            if (reminder.location) {
+              onUpdate({ location: null });
+            } else {
+              Alert.alert("Location", "Location-based reminders require geofencing. This feature will be implemented with location permissions.");
+            }
+          }}
+          onClear={reminder.location ? () => onUpdate({ location: null }) : undefined}
         />
 
         <View style={styles.formActions}>
@@ -2384,6 +2496,10 @@ const styles = StyleSheet.create({
     right: 16,
     top: 10
   },
+  titleActionRow: {
+    flexDirection: "row",
+    gap: 8
+  },
   titleActionButton: {
     alignItems: "center",
     borderRadius: 16,
@@ -2669,6 +2785,27 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 12
   },
+  taskHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8
+  },
+  taskBadges: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6
+  },
+  categoryBadge: {
+    borderRadius: 12,
+    height: 20,
+    justifyContent: "center",
+    width: 20
+  },
+  categoryBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700"
+  },
   taskTime: {
     color: PURPLE,
     fontSize: 13,
@@ -2771,7 +2908,7 @@ const styles = StyleSheet.create({
   answerRow: {
     flexDirection: "row",
     gap: 44,
-    marginBottom: 82
+    marginBottom: 24
   },
   answerButton: {
     alignItems: "center",
@@ -2779,6 +2916,35 @@ const styles = StyleSheet.create({
     height: 104,
     justifyContent: "center",
     width: 104
+  },
+  snoozeSection: {
+    marginTop: 16
+  },
+  snoozeButton: {
+    alignItems: "center",
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    padding: 12
+  },
+  snoozeButtonText: {
+    color: TEXT,
+    fontSize: 16,
+    fontWeight: "500"
+  },
+  snoozeMenu: {
+    borderRadius: 12,
+    marginTop: 8,
+    overflow: "hidden"
+  },
+  snoozeOption: {
+    alignItems: "center",
+    padding: 16
+  },
+  snoozeOptionText: {
+    color: TEXT,
+    fontSize: 16
   },
   answerNo: {
     backgroundColor: PURPLE
