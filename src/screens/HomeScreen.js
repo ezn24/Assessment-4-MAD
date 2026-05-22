@@ -790,18 +790,18 @@ function ReminderPrompt({ reminder, isDark, palette, onNo, onYes }) {
   const colors = palette || getPalette({}, isDark);
   return (
     <Animatable.View animation="fadeInUp" duration={260} style={[styles.reminderScreen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
-      <ScreenTitle isDark={isDark}>VizMinder</ScreenTitle>
-      <VisualCue reminder={reminder} size={104} iconSize={48} palette={colors} />
+      <ScreenTitle isDark={isDark}>Reminder</ScreenTitle>
+      <VisualCue reminder={reminder} size={120} iconSize={56} palette={colors} />
       <View style={styles.reminderCopy}>
-        <Text style={[styles.reminderHeadline, { color: colors.primary }]}>It is {format(parseISO(reminder.scheduledAt), "hh:mm")} now !</Text>
-        <Text style={[styles.reminderQuestion, { color: colors.primary }]}>Have you completed {reminder.title}?</Text>
+        <Text style={[styles.reminderHeadline, { color: colors.primary }]}>It's {format(parseISO(reminder.scheduledAt), "h:mm a")}</Text>
+        <Text style={[styles.reminderQuestion, isDark && styles.textOnDark]}>Did you complete {reminder.title}?</Text>
       </View>
       <View style={styles.answerRow}>
         <Pressable style={[styles.answerButton, { backgroundColor: colors.primary }]} onPress={onNo}>
-          <MaterialCommunityIcons name="close" size={38} color="#FFFFFF" />
+          <MaterialCommunityIcons name="close" size={36} color="#FFFFFF" />
         </Pressable>
         <Pressable style={[styles.answerButton, { backgroundColor: colors.primaryContainer }]} onPress={onYes}>
-          <MaterialCommunityIcons name="check" size={38} color="#FFFFFF" />
+          <MaterialCommunityIcons name="check" size={36} color={colors.primary} />
         </Pressable>
       </View>
     </Animatable.View>
@@ -928,12 +928,12 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
   const ringtoneLabel = RINGTONE_OPTIONS.find(([value]) => value === reminder.ringtone)?.[1] || "System alarm";
   return (
     <Animatable.View animation="fadeInUp" duration={240} style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
-      <ScreenTitle isDark={isDark}>{mode === "add" ? "Add Task" : "Edit Task"}</ScreenTitle>
-      <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled">
+      <ScreenTitle isDark={isDark}>{mode === "add" ? "New Reminder" : "Edit Reminder"}</ScreenTitle>
+      <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.imageEditWrap}>
-          <VisualCue reminder={reminder} size={104} iconSize={48} palette={colors} />
+          <VisualCue reminder={reminder} size={112} iconSize={52} palette={colors} />
           <Pressable style={[styles.editFab, { backgroundColor: colors.primary }]} onPress={onAttachImage}>
-            <MaterialCommunityIcons name="pencil" size={16} color="#FFFFFF" />
+            <MaterialCommunityIcons name="pencil" size={18} color="#FFFFFF" />
           </Pressable>
         </View>
 
@@ -943,7 +943,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
         <EditTextField
           isDark={isDark}
           palette={colors}
-          label="Description (optional)"
+          label="Description"
           value={reminder.description}
           onChangeText={(description) => onUpdate({ description })}
           multiline
@@ -971,7 +971,18 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           value={ringtoneLabel}
           onPress={openRingtonePicker}
         />
-        <View style={[styles.importantRow, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+        <View style={[
+          styles.importantRow, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          }, 
+          isDark && styles.cardOnDark
+        ]}>
           <View style={styles.settingsCopy}>
             <Text style={[styles.editLabel, isDark && styles.textOnDark]}>Repeat daily</Text>
             <Text style={[styles.importantHelp, isDark && styles.mutedOnDark]}>Remind again every day at this time.</Text>
@@ -988,7 +999,18 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
             onClear={() => onUpdate({ repeatUntil: null })}
           />
         ) : null}
-        <View style={[styles.importantRow, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+        <View style={[
+          styles.importantRow, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          }, 
+          isDark && styles.cardOnDark
+        ]}>
           <View style={styles.settingsCopy}>
             <Text style={[styles.editLabel, isDark && styles.textOnDark]}>After-answer follow-up</Text>
             <Text style={[styles.importantHelp, isDark && styles.mutedOnDark]}>Repeat after Yes or No for time-sensitive tasks.</Text>
@@ -1026,7 +1048,18 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
             />
           </>
         ) : null}
-        <View style={[styles.importantRow, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+        <View style={[
+          styles.importantRow, 
+          { 
+            backgroundColor: colors.surface,
+            shadowColor: isDark ? "#000" : "rgba(0,0,0,0.05)",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2
+          }, 
+          isDark && styles.cardOnDark
+        ]}>
           <View>
             <Text style={[styles.editLabel, isDark && styles.textOnDark]}>Important reminder</Text>
             <Text style={[styles.importantHelp, isDark && styles.mutedOnDark]}>Yes triggers celebration when completed.</Text>
