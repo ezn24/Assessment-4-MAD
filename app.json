@@ -1,11 +1,17 @@
 {
   "expo": {
-    "name": "VizMinder A4",
+    "name": "VizMinder",
     "slug": "vizminder-a4",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "scheme": "vizminder",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#6200EE"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],

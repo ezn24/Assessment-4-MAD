@@ -1,6 +1,6 @@
-# VizMinder A4
+# VizMinder
 
-VizMinder A4 is an Android-focused React Native app for visual-first reminders. It keeps the UI direction from `VizMinder-MAD`: Material-style surfaces, visual reminder cues, a bottom search/add dock, pill navigation, and a low-friction Yes/No reminder flow.
+VizMinder is an Android-focused React Native app for visual-first reminders. It keeps the UI direction from `VizMinder-MAD`: Material-style surfaces, visual reminder cues, a bottom search/add dock, pill navigation, and a low-friction Yes/No reminder flow.
 
 This version is intended to be installed as an APK, not run only in Expo Go. Native Android code is included for exact alarms and a full-screen reminder Activity.
 
