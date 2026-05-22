@@ -519,6 +519,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   }}
                   onToggle={async (reminder, completed) =>
                     {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
                       if (reminder.notificationId) {
                         await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
                       }
@@ -2198,6 +2199,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 16,
     top: 10
+  },
+  titleActionButton: {
+    alignItems: "center",
+    borderRadius: 16,
+    height: 36,
+    justifyContent: "center",
+    width: 36
   },
   topAction: {
     alignItems: "center",
