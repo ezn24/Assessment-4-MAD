@@ -187,6 +187,9 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const [undoDelete, setUndoDelete] = useState(null);
   const [celebrating, setCelebrating] = useState(false);
   const [authUser, setAuthUser] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const settings = { ...DEFAULT_SETTINGS, ...appSettings };
   const activeScheme = settings.themeMode;
   const isDark = typeof isDarkOverride === "boolean" ? isDarkOverride : activeScheme === "dark";
@@ -339,15 +342,22 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   };
 
   const deleteReminderWithUndo = async (reminder, afterDelete) => {
-    if (reminder.notificationId) {
-      await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
+    setDeleting(true);
+    try {
+      if (reminder.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
+      }
+      await cancelNativeAlarm(reminder.id).catch(() => false);
+      deleteReminder(reminder.id);
+      setUndoDelete(reminder);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      setMessage("Reminder deleted.");
+      setTimeout(() => setDeleting(false), 300);
+      afterDelete?.();
+    } catch (error) {
+      setMessage("Failed to delete reminder.");
+      setDeleting(false);
     }
-    await cancelNativeAlarm(reminder.id).catch(() => false);
-    deleteReminder(reminder.id);
-    setUndoDelete(reminder);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-    setMessage("Reminder deleted.");
-    afterDelete?.();
   };
 
   const confirmDeleteReminder = (reminder, afterDelete) => {
@@ -434,38 +444,49 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                 setMessage("Time is required.");
                 return;
               }
-              if (editMode === "add") {
-                const reminder = {
-                  ...editing,
-                  id: `reminder-${Date.now()}`,
-                  title: editing.title.trim(),
-                  description: editing.description.trim(),
-                  completed: false,
-                  completedAt: null
-                };
-                const notificationId = await scheduleReminderAlarms(reminder);
-                addReminder({ ...reminder, notificationId });
-                setMessage(notificationId ? "Reminder saved and notification scheduled." : "Reminder saved.");
-              } else {
-                if (editing.notificationId) {
-                  await Notifications.cancelScheduledNotificationAsync(editing.notificationId).catch(() => {});
+              setSaving(true);
+              try {
+                if (editMode === "add") {
+                  const reminder = {
+                    ...editing,
+                    id: `reminder-${Date.now()}`,
+                    title: editing.title.trim(),
+                    description: editing.description.trim(),
+                    completed: false,
+                    completedAt: null
+                  };
+                  const notificationId = await scheduleReminderAlarms(reminder);
+                  addReminder({ ...reminder, notificationId });
+                  setMessage(notificationId ? "Reminder saved and notification scheduled." : "Reminder saved.");
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                } else {
+                  if (editing.notificationId) {
+                    await Notifications.cancelScheduledNotificationAsync(editing.notificationId).catch(() => {});
+                  }
+                  await cancelNativeAlarm(editing.id).catch(() => false);
+                  const savedReminder = {
+                    ...editing,
+                    title: editing.title.trim(),
+                    description: editing.description.trim(),
+                    completed: false,
+                    completedAt: null
+                  };
+                  const notificationId = await scheduleReminderAlarms(savedReminder);
+                  updateReminder(editing.id, {
+                    ...savedReminder,
+                    notificationId
+                  });
+                  setMessage(notificationId ? "Reminder updated and notification scheduled." : "Reminder updated. Notification permission is needed for alerts.");
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
                 }
-                await cancelNativeAlarm(editing.id).catch(() => false);
-                const savedReminder = {
-                  ...editing,
-                  title: editing.title.trim(),
-                  description: editing.description.trim(),
-                  completed: false,
-                  completedAt: null
-                };
-                const notificationId = await scheduleReminderAlarms(savedReminder);
-                updateReminder(editing.id, {
-                  ...savedReminder,
-                  notificationId
-                });
-                setMessage(notificationId ? "Reminder updated and notification scheduled." : "Reminder updated. Notification permission is needed for alerts.");
+                setShowSuccess(true);
+                setTimeout(() => setShowSuccess(false), 1500);
+                setTimeout(() => setEditing(null), 300);
+              } catch (error) {
+                setMessage("Failed to save reminder.");
+              } finally {
+                setSaving(false);
               }
-              setEditing(null);
             }}
             onCancel={() => setEditing(null)}
             onDelete={
