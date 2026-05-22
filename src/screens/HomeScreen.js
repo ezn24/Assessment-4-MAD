@@ -689,6 +689,9 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                   <MaterialCommunityIcons name="play-circle-outline" size={24} color={primary} />
                 </Pressable>
               ) : null}
+                <Pressable style={styles.editIconButton} onPress={() => onEdit(reminder)}>
+                  <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.onSurfaceVariant} />
+                </Pressable>
                 <Switch value={!reminder.completed} color={primary} onValueChange={(value) => onToggle(reminder, !value)} />
               </View>
             </Pressable>
@@ -712,9 +715,11 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
           placeholderTextColor={colors.onSurfaceVariant}
           theme={{ colors: { primary, onSurfaceVariant: colors.onSurfaceVariant } }}
         />
-        <Pressable style={[styles.addButton, { backgroundColor: primary }]} onPress={onAdd}>
-          <MaterialCommunityIcons name="plus" size={24} color="#FFFFFF" />
-        </Pressable>
+        <Animatable.View animation="pulse" iterationCount="infinite" duration={2000}>
+          <Pressable style={[styles.addButton, { backgroundColor: primary }]} onPress={onAdd}>
+            <MaterialCommunityIcons name="plus" size={24} color="#FFFFFF" />
+          </Pressable>
+        </Animatable.View>
       </View>
     </View>
   );
@@ -2421,6 +2426,14 @@ const styles = StyleSheet.create({
     height: 36,
     justifyContent: "center",
     width: 36
+  },
+  editIconButton: {
+    alignItems: "center",
+    backgroundColor: SURFACE_VARIANT,
+    borderRadius: 16,
+    height: 32,
+    justifyContent: "center",
+    width: 32
   },
   searchDock: {
     alignItems: "center",
