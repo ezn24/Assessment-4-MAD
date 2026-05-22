@@ -8,6 +8,11 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import HomeScreen from "./src/screens/HomeScreen";
 import { darkTheme, lightTheme } from "./src/theme";
+import { installDevTest } from "./src/services/devTest";
+
+if (__DEV__) {
+  installDevTest();
+}
 
 const SETTINGS_STORAGE_KEY = "vizminder-a4-settings";
 const DEFAULT_SETTINGS = {

@@ -726,7 +726,12 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
 function ScreenTitle({ children, action, isDark = false }) {
   return (
     <View style={styles.titleWrap}>
-      <Text style={[styles.screenTitle, isDark && styles.textOnDark]}>{children}</Text>
+      <Text
+        style={[styles.screenTitle, isDark && styles.textOnDark]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >{children}</Text>
       {action ? <View style={styles.titleAction}>{action}</View> : null}
     </View>
   );
@@ -2156,7 +2161,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
             <MaterialCommunityIcons name="battery-charging" size={24} color={colors.primary} />
             <View style={styles.deviceInfoText}>
               <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
-                {batteryInfo?.level !== null ? `${batteryInfo.level}%` : "Unknown"}
+                {batteryInfo && batteryInfo.level != null ? `${Math.round(batteryInfo.level)}%` : "Unknown"}
               </Text>
               <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
                 {batteryInfo?.isCharging ? "Charging" : "Not charging"}
@@ -2397,11 +2402,16 @@ function BottomNav({ active, isDark, palette, onChange }) {
         <Pressable key={key} style={styles.navItem} onPress={() => onChange(key)}>
           <View style={[styles.navIconWrap, active === key && { backgroundColor: colors.primaryContainer, borderRadius: 24 }]}>
             <View style={styles.navIconAnchor}>
-              <MaterialCommunityIcons name={icon} size={26} color={active === key ? colors.primary : colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name={icon} size={24} color={active === key ? colors.primary : colors.onSurfaceVariant} />
               {key === "home" ? <View style={styles.notificationDot} /> : null}
             </View>
           </View>
-          <Text style={[styles.navLabel, { color: active === key ? colors.primary : colors.onSurfaceVariant }]}>{label}</Text>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            style={[styles.navLabel, { color: active === key ? colors.primary : colors.onSurfaceVariant }]}
+          >{label}</Text>
         </Pressable>
       ))}
     </View>
@@ -2822,13 +2832,16 @@ const styles = StyleSheet.create({
     minHeight: 72,
     justifyContent: "center",
     paddingBottom: 10,
-    paddingTop: 22
+    paddingTop: 22,
+    paddingHorizontal: 16
   },
   screenTitle: {
     color: TEXT,
     fontSize: 34,
     fontWeight: "700",
-    letterSpacing: -0.5
+    letterSpacing: -0.5,
+    maxWidth: "70%",
+    textAlign: "center"
   },
   titleAction: {
     position: "absolute",
@@ -2896,6 +2909,8 @@ const styles = StyleSheet.create({
   },
   visualCueCopy: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     gap: 6
   },
   formCardTitle: {
@@ -2952,7 +2967,7 @@ const styles = StyleSheet.create({
   emptyHome: {
     alignItems: "center",
     gap: 16,
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
     paddingTop: 80
   },
   emptyVisual: {
@@ -3058,7 +3073,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10
   },
   scheduleCopy: {
-    flex: 1
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0
   },
   emptySchedule: {
     alignItems: "center",
@@ -3122,6 +3139,8 @@ const styles = StyleSheet.create({
   },
   taskCopy: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     paddingHorizontal: 12
   },
   taskHeader: {
@@ -3236,25 +3255,32 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "800",
     marginBottom: 26,
+    paddingHorizontal: 12,
     textAlign: "center"
   },
   reminderQuestion: {
     color: PURPLE,
     fontSize: 22,
     fontWeight: "800",
+    paddingHorizontal: 12,
     textAlign: "center"
   },
   answerRow: {
     flexDirection: "row",
-    gap: 44,
+    justifyContent: "space-evenly",
+    width: "100%",
     marginBottom: 24
   },
   answerButton: {
     alignItems: "center",
-    borderRadius: 52,
-    height: 104,
+    aspectRatio: 1,
+    borderRadius: 999,
     justifyContent: "center",
-    width: 104
+    maxHeight: 104,
+    maxWidth: 104,
+    minHeight: 80,
+    minWidth: 80,
+    width: "32%"
   },
   snoozeSection: {
     marginTop: 16
@@ -3678,7 +3704,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16
   },
   settingsCopy: {
-    flex: 1
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0
   },
   settingsTitle: {
     color: TEXT,
@@ -3722,8 +3750,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: "row",
     height: 66,
-    justifyContent: "space-around",
+    justifyContent: "space-between",
     left: 0,
+    paddingHorizontal: 4,
     position: "absolute",
     right: 0
   },
@@ -3733,14 +3762,18 @@ const styles = StyleSheet.create({
   },
   navItem: {
     alignItems: "center",
-    minWidth: 78
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    paddingHorizontal: 2
   },
   navIconWrap: {
     alignItems: "center",
     borderRadius: 18,
     height: 32,
     justifyContent: "center",
-    width: 56
+    maxWidth: "100%",
+    paddingHorizontal: 8
   },
   navIconActive: {
     backgroundColor: PRIMARY_CONTAINER,
@@ -3766,8 +3799,10 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     color: "#56515E",
-    fontSize: 12,
-    fontWeight: "700"
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
+    maxWidth: "100%"
   },
   modalLayer: {
     alignItems: "center",
@@ -3781,8 +3816,9 @@ const styles = StyleSheet.create({
   timeDialog: {
     backgroundColor: SURFACE_VARIANT,
     borderRadius: 24,
+    maxWidth: 420,
     padding: 18,
-    width: "82%"
+    width: "90%"
   },
   dialogLabel: {
     color: MUTED,
@@ -3793,14 +3829,16 @@ const styles = StyleSheet.create({
   timeInputs: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "center"
+    justifyContent: "center",
+    flexWrap: "wrap"
   },
   timeInput: {
     backgroundColor: "#E9DFFF",
     fontSize: 28,
     height: 58,
     textAlign: "center",
-    width: 88
+    width: 88,
+    maxWidth: "40%"
   },
   colon: {
     color: TEXT,
@@ -3948,9 +3986,10 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE_VARIANT,
     borderRadius: 24,
     maxHeight: "86%",
+    maxWidth: 460,
     paddingTop: 18,
     paddingBottom: 14,
-    width: "90%"
+    width: "92%"
   },
   dateDialogTitle: {
     color: MUTED,
