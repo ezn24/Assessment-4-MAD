@@ -40,11 +40,21 @@ import {
 import { cancelNativeAlarm, scheduleNativeAlarm } from "../services/nativeAlarm";
 import { getAccelerometerData, getGyroscopeData, toggleTorch, getTorchAvailability } from "../services/sensors";
 import { getCurrentLocation, LocationMap } from "../services/location";
-import { BannerAdComponent, preloadInterstitial } from "../services/admob";
 import { getBatteryInfo, subscribeToBatteryLevel } from "../services/battery";
 import { isBiometricAvailable, authenticateBiometric } from "../services/biometrics";
 import { getNetworkState, subscribeToNetworkState } from "../services/connectivity";
 import { encryptReminder, decryptReminder } from "../services/encryption";
+
+let BannerAdComponent, preloadInterstitial;
+if (Platform.OS !== "web") {
+  try {
+    const admob = require("../services/admob");
+    BannerAdComponent = admob.BannerAdComponent;
+    preloadInterstitial = admob.preloadInterstitial;
+  } catch (e) {
+    console.warn("AdMob not available:", e);
+  }
+}
 
 const PURPLE = "#007AFF";
 const LIGHT_PURPLE = "#E5F1FF";
@@ -698,7 +708,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
       >
         {message}
       </Snackbar>
-      {tab === "home" && <BannerAdComponent style={styles.bannerAd} />}
+      {tab === "home" && BannerAdComponent && <BannerAdComponent style={styles.bannerAd} />}
     </SafeAreaView>
   );
 }
