@@ -363,7 +363,10 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const confirmDeleteReminder = (reminder, afterDelete) => {
     Alert.alert("Delete reminder?", "This removes the reminder and cancels its scheduled alarm.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteReminderWithUndo(reminder, afterDelete) }
+      { text: "Delete", style: "destructive", onPress: () => {
+        setDeleting(true);
+        deleteReminderWithUndo(reminder, afterDelete);
+      }}
     ]);
   };
 
@@ -1100,8 +1103,16 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
 
         <View style={styles.formActions}>
           {onDelete ? (
-            <Button mode="text" icon="delete-outline" textColor={ERROR} style={styles.deleteButton} onPress={onDelete}>
-              Delete
+            <Button 
+              mode="text" 
+              icon={deleting ? undefined : "delete-outline"} 
+              textColor={ERROR} 
+              style={styles.deleteButton} 
+              onPress={onDelete}
+              loading={deleting}
+              disabled={deleting || saving}
+            >
+              {deleting ? "Deleting..." : "Delete"}
             </Button>
           ) : null}
           <Button 
@@ -1112,11 +1123,11 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
             onPress={onSave}
             loading={saving}
             icon={saving ? undefined : "content-save"}
-            disabled={saving}
+            disabled={saving || deleting}
           >
             {saving ? "Saving..." : "Save"}
           </Button>
-          <Button mode="outlined" textColor={colors.onSurfaceVariant} style={styles.actionButton} onPress={onCancel} disabled={saving}>
+          <Button mode="outlined" textColor={colors.onSurfaceVariant} style={styles.actionButton} onPress={onCancel} disabled={saving || deleting}>
             Cancel
           </Button>
         </View>
