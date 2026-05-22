@@ -2,6 +2,7 @@
 import {
   Alert,
   BackHandler,
+  Dimensions,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -210,6 +211,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const confettiRef = useRef(null);
   const remindersRef = useRef(reminders);
   const lastCloudUserRef = useRef(null);
+  const isDeletingRef = useRef(false);
   const [tab, setTab] = useState("home");
   const [editing, setEditing] = useState(null);
   const [editMode, setEditMode] = useState("edit");
@@ -233,6 +235,10 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const isDark = typeof isDarkOverride === "boolean" ? isDarkOverride : activeScheme === "dark";
   const palette = useMemo(() => getPalette(themeColors, isDark), [themeColors, isDark]);
   const themedSurface = palette.surface;
+
+  const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+  const isSmallScreen = screenWidth < 375;
+  const isLargeScreen = screenWidth > 414;
 
   const firstReminder = reminders[0];
   const activeReminder = reminding || firstReminder;
@@ -441,13 +447,26 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   };
 
   const confirmDeleteReminder = (reminder, afterDelete) => {
+    if (deleting || isDeletingRef.current) {
+      return;
+    }
+    isDeletingRef.current = true;
     console.log("confirmDeleteReminder called for:", reminder.id);
     Alert.alert("Delete reminder?", "This removes the reminder and cancels its scheduled alarm.", [
-      { text: "Cancel", style: "cancel" },
+      { 
+        text: "Cancel", 
+        style: "cancel",
+        onPress: () => {
+          isDeletingRef.current = false;
+        }
+      },
       { text: "Delete", style: "destructive", onPress: () => {
         console.log("Delete confirmed for:", reminder.id);
         setDeleting(true);
         deleteReminderWithUndo(reminder, afterDelete);
+        setTimeout(() => {
+          isDeletingRef.current = false;
+        }, 500);
       }}
     ]);
   };
@@ -626,6 +645,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   onDelete={(reminder) => {
                     confirmDeleteReminder(reminder);
                   }}
+                  isSmallScreen={isSmallScreen}
+                  isLargeScreen={isLargeScreen}
                 />
               ) : tab === "schedule" ? (
                 <ScheduleTab
@@ -639,6 +660,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                     setEditMode("edit");
                     setEditing({ ...reminder });
                   }}
+                  isSmallScreen={isSmallScreen}
+                  isLargeScreen={isLargeScreen}
                 />
               ) : tab === "stats" ? (
                 <StatsTab
@@ -646,6 +669,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   completedCount={completedCount}
                   isDark={isDark}
                   palette={palette}
+                  isSmallScreen={isSmallScreen}
+                  isLargeScreen={isLargeScreen}
                 />
               ) : tab === "account" ? (
                 <AccountTab
@@ -656,6 +681,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   palette={palette}
                   onSyncNow={syncNow}
                   onMessage={setMessage}
+                  isSmallScreen={isSmallScreen}
+                  isLargeScreen={isLargeScreen}
                 />
               ) : tab === "device" ? (
                 <DeviceTab
@@ -688,6 +715,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                       setMessage(loc ? "Location refreshed" : "Location unavailable - permission denied?");
                     }).catch(() => setMessage("Location refresh failed"));
                   }}
+                  isSmallScreen={isSmallScreen}
+                  isLargeScreen={isLargeScreen}
                 />
               ) : (
                 <SettingsTab
@@ -697,6 +726,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   palette={palette}
                   onReset={confirmResetReminders}
                   onMessage={setMessage}
+                  isSmallScreen={isSmallScreen}
+                  isLargeScreen={isLargeScreen}
                 />
               )}
             </Animatable.View>
@@ -723,17 +754,21 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
           <Text style={styles.successText}>Saved!</Text>
         </Animatable.View>
       ) : null}
-      <Snackbar
-        visible={Boolean(message)}
-        onDismiss={() => {
-          setMessage("");
-          setUndoDelete(null);
-        }}
-        duration={4200}
-        action={undoDelete ? { label: "Undo", onPress: restoreDeletedReminder } : undefined}
-      >
-        {message}
-      </Snackbar>
+      <Animatable.View animation="slideInDown" duration={400} style={styles.notificationContainer}>
+        <Snackbar
+          visible={Boolean(message)}
+          onDismiss={() => {
+            setMessage("");
+            setUndoDelete(null);
+          }}
+          duration={4200}
+          style={{ backgroundColor: SUCCESS }}
+          action={undoDelete ? { label: "Undo", onPress: restoreDeletedReminder, labelStyle: { color: "#FFFFFF" } } : undefined}
+          theme={{ colors: { surface: SUCCESS, onSurface: "#FFFFFF" } }}
+        >
+          <Text style={styles.notificationText}>{message}</Text>
+        </Snackbar>
+      </Animatable.View>
       {tab === "home" && BannerAdComponent && <BannerAdComponent style={styles.bannerAd} />}
     </SafeAreaView>
   );
@@ -753,9 +788,11 @@ function ScreenTitle({ children, action, isDark = false }) {
   );
 }
 
-function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, palette, onEdit, onToggle, onAdd, onDelete, onRefresh, refreshing }) {
+function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, palette, onEdit, onToggle, onAdd, onDelete, onRefresh, refreshing, isSmallScreen, isLargeScreen }) {
   const [query, setQuery] = useState("");
   const [showTodayOnly, setShowTodayOnly] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const isDeletingRef = useRef(false);
   const colors = palette || getPalette(themeColors, isDark);
   const primary = colors.primary;
   
@@ -767,16 +804,25 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
     return matchesQuery && matchesToday;
   });
 
+  const handleDelete = (reminder) => {
+    if (isDeletingRef.current || deletingId === reminder.id) {
+      return;
+    }
+    isDeletingRef.current = true;
+    setDeletingId(reminder.id);
+    onDelete(reminder);
+    setTimeout(() => {
+      isDeletingRef.current = false;
+      setDeletingId(null);
+    }, 500);
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
-      <ScreenTitle isDark={isDark} action={
-        <Pressable style={[styles.titleActionButton, { backgroundColor: showTodayOnly ? colors.primary : colors.surfaceVariant }]} onPress={() => setShowTodayOnly(!showTodayOnly)}>
-          <MaterialCommunityIcons name="calendar-today" size={20} color={showTodayOnly ? "#FFFFFF" : colors.onSurfaceVariant} />
-        </Pressable>
-      }>Reminders</ScreenTitle>
+      <ScreenTitle isDark={isDark}>Reminders</ScreenTitle>
       <FlatList
         style={styles.flex}
-        contentContainerStyle={styles.homeList}
+        contentContainerStyle={[styles.homeList, isSmallScreen && styles.homeListCompact]}
         showsVerticalScrollIndicator={false}
         data={visibleReminders}
         keyExtractor={(item) => item.id}
@@ -801,19 +847,17 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
           )
         }
         renderItem={({ item: reminder, index }) => (
-          <Animatable.View animation="fadeInUp" delay={index * 50} duration={280} useNativeDriver>
-            <Swipeable
-              overshootRight={false}
-              renderRightActions={() => (
-                <SwipeDeleteAction
-                  onPress={() => onDelete(reminder)}
-                />
-              )}
-            >
-            <Pressable 
+          <Animatable.View 
+            animation={deletingId === reminder.id ? "slideOutRight" : "fadeInUp"} 
+            delay={deletingId === reminder.id ? 0 : index * 50} 
+            duration={deletingId === reminder.id ? 300 : 280} 
+            useNativeDriver
+          >
+            <Pressable
               style={[
-                styles.taskRow, 
-                { 
+                styles.taskRow,
+                isSmallScreen && styles.taskRowCompact,
+                {
                   backgroundColor: colors.surface,
                   shadowColor: isDark ? "#000" : "rgba(0,0,0,0.08)",
                   shadowOffset: { width: 0, height: 2 },
@@ -829,7 +873,7 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
               accessibilityRole="button"
             >
               <View style={styles.visualBubble}>
-                <VisualCue reminder={reminder} size={48} iconSize={24} compact palette={colors} />
+                <VisualCue reminder={reminder} size={isSmallScreen ? 40 : 48} iconSize={isSmallScreen ? 20 : 24} compact palette={colors} />
               </View>
               <View style={styles.taskCopy}>
                 <View style={styles.taskHeader}>
@@ -854,6 +898,17 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                 <Pressable style={styles.editIconButton} onPress={() => onEdit(reminder)}>
                   <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.onSurfaceVariant} />
                 </Pressable>
+                <Pressable 
+                  style={styles.deleteIconButton} 
+                  onPress={() => handleDelete(reminder)}
+                  disabled={deletingId === reminder.id}
+                >
+                  <MaterialCommunityIcons 
+                    name="delete-outline" 
+                    size={20} 
+                    color={deletingId === reminder.id ? colors.onSurfaceDisabled : (colors.error || ERROR)} 
+                  />
+                </Pressable>
                 <Switch 
                   value={!reminder.completed} 
                   color={primary} 
@@ -863,7 +918,6 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                 />
               </View>
             </Pressable>
-            </Swipeable>
           </Animatable.View>
         )}
       />
@@ -899,7 +953,7 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
   );
 }
 
-function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefresh, refreshing }) {
+function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefresh, refreshing, isSmallScreen, isLargeScreen }) {
   const colors = palette || getPalette({}, isDark);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [visibleMonth, setVisibleMonth] = useState(format(new Date(), "yyyy-MM"));
@@ -920,11 +974,11 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark} action={
         <Pressable style={[styles.titleActionButton, { backgroundColor: colors.primary }]} onPress={() => onEdit(createDraftReminder())}>
-          <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
+          <MaterialCommunityIcons name="plus" size={isSmallScreen ? 18 : 20} color="#FFFFFF" />
         </Pressable>
       }>Schedule</ScreenTitle>
-      <ScrollView 
-        contentContainerStyle={styles.scheduleContent} 
+      <ScrollView
+        contentContainerStyle={[styles.scheduleContent, isSmallScreen && styles.scheduleContentCompact]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -961,9 +1015,9 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
               selectedDayBackgroundColor: colors.primary,
               todayTextColor: colors.primary,
               arrowColor: colors.primary,
-              textDayFontSize: 13,
-              textMonthFontSize: 15,
-              textDayHeaderFontSize: 12
+              textDayFontSize: isSmallScreen ? 12 : 13,
+              textMonthFontSize: isSmallScreen ? 14 : 15,
+              textDayHeaderFontSize: isSmallScreen ? 11 : 12
             }}
           />
         </View>
@@ -1096,6 +1150,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
   const datePickerValue = reminder.hasDate === false ? new Date() : currentScheduled;
   const repeatUntilValue = reminder.repeatUntil && isValid(parseISO(reminder.repeatUntil)) ? parseISO(reminder.repeatUntil) : currentScheduled;
   const openTimePicker = () => {
+    console.log("openTimePicker called, platform:", Platform.OS);
     if (Platform.OS === "android") {
       DateTimePickerAndroid.open({
         value: timePickerValue,
@@ -1121,6 +1176,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
     setTimeOpen(true);
   };
   const openDatePicker = () => {
+    console.log("openDatePicker called, platform:", Platform.OS);
     if (Platform.OS === "android") {
       DateTimePickerAndroid.open({
         value: datePickerValue,
@@ -1130,6 +1186,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
         negativeButton: { label: "Cancel", textColor: colors.onSurfaceVariant },
         neutralButton: { label: "Clear", textColor: colors.onSurfaceVariant },
         onChange: (event, selectedDate) => {
+          console.log("DatePicker onChange:", event.type, selectedDate);
           if (event.type === "neutralButtonPressed") {
             onUpdate({ hasDate: false });
             return;
@@ -1150,12 +1207,16 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
     setDateOpen(true);
   };
   const openRingtonePicker = () => {
+    console.log("openRingtonePicker called");
     Alert.alert(
       "Reminder sound",
       "Choose the sound used by the full-screen alarm.",
       RINGTONE_OPTIONS.map(([value, label]) => ({
         text: label,
-        onPress: () => onUpdate({ ringtone: value })
+        onPress: () => {
+          console.log("Ringtone selected:", value);
+          onUpdate({ ringtone: value });
+        }
       })).concat([{ text: "Cancel", style: "cancel" }])
     );
   };
@@ -1184,22 +1245,30 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
     setRepeatUntilOpen(true);
   };
   const openFollowUpCountPicker = () => {
+    console.log("openFollowUpCountPicker called");
     Alert.alert(
       "Follow-up reminders",
       "How many extra reminders should fire after the first alert?",
       FOLLOW_UP_COUNTS.map((count) => ({
         text: count === 0 ? "Off" : `${count} time${count > 1 ? "s" : ""}`,
-        onPress: () => onUpdate({ followUpEnabled: count > 0, followUpCount: count })
+        onPress: () => {
+          console.log("Follow-up count selected:", count);
+          onUpdate({ followUpEnabled: count > 0, followUpCount: count });
+        }
       })).concat([{ text: "Cancel", style: "cancel" }])
     );
   };
   const openFollowUpIntervalPicker = () => {
+    console.log("openFollowUpIntervalPicker called");
     Alert.alert(
       "Follow-up interval",
       "How long should VizMinder wait between follow-up reminders?",
       FOLLOW_UP_INTERVALS.map((minutes) => ({
         text: `${minutes} minute${minutes > 1 ? "s" : ""}`,
-        onPress: () => onUpdate({ followUpIntervalMinutes: minutes })
+        onPress: () => {
+          console.log("Follow-up interval selected:", minutes);
+          onUpdate({ followUpIntervalMinutes: minutes });
+        }
       })).concat([{ text: "Cancel", style: "cancel" }])
     );
   };
@@ -1226,22 +1295,41 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           onChangeText={(description) => onUpdate({ description })}
           multiline
         />
-        <EditField
-          isDark={isDark}
-          palette={colors}
-          label="Time"
-          value={reminder.timeSet === false ? "Required" : format(parseISO(reminder.scheduledAt), "HH:mm")}
-          onPress={openTimePicker}
-          onClear={() => onUpdate({ timeSet: false })}
-        />
-        <EditField
-          isDark={isDark}
-          palette={colors}
-          label="Date"
-          value={reminder.hasDate === false ? "Optional" : format(parseISO(reminder.scheduledAt), DATE_DISPLAY_FORMAT)}
-          onPress={openDatePicker}
-          onClear={() => onUpdate({ hasDate: false })}
-        />
+        
+        <View style={[styles.dateTimeSection, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+          <Text style={[styles.editLabel, isDark && styles.textOnDark]}>Schedule</Text>
+          <View style={styles.dateTimeRow}>
+            <Pressable 
+              style={[styles.dateTimeButton, { backgroundColor: colors.surfaceVariant }]} 
+              onPress={() => {
+                console.log("Date button pressed");
+                openDatePicker();
+              }}
+            >
+              <MaterialCommunityIcons name="calendar" size={20} color={colors.primary} />
+              <Text style={[styles.dateTimeButtonText, { color: colors.onSurface }]}>
+                {reminder.hasDate === false ? "Select Date" : format(parseISO(reminder.scheduledAt), "MMM dd, yyyy")}
+              </Text>
+            </Pressable>
+            <Pressable 
+              style={[styles.dateTimeButton, { backgroundColor: colors.surfaceVariant }]} 
+              onPress={() => {
+                console.log("Time button pressed");
+                openTimePicker();
+              }}
+            >
+              <MaterialCommunityIcons name="clock" size={20} color={colors.primary} />
+              <Text style={[styles.dateTimeButtonText, { color: colors.onSurface }]}>
+                {reminder.timeSet === false ? "Select Time" : format(parseISO(reminder.scheduledAt), "HH:mm")}
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={[styles.dateTimeHint, isDark && styles.mutedOnDark]}>
+            {reminder.hasDate && reminder.timeSet 
+              ? `Scheduled for ${format(parseISO(reminder.scheduledAt), "MMM dd, yyyy 'at' HH:mm")}`
+              : "Select both date and time for your reminder"}
+          </Text>
+        </View>
         <EditField
           isDark={isDark}
           palette={colors}
@@ -1399,6 +1487,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           positiveButton={{ label: "OK", textColor: colors.primary }}
           negativeButton={{ label: "Cancel", textColor: colors.onSurfaceVariant }}
           onChange={(event, selectedDate) => {
+            console.log("Web TimePicker onChange:", event.type, selectedDate);
             setTimeOpen(Platform.OS === "ios");
             if (event.type === "set" && selectedDate) {
               const nextDate = set(currentScheduled, {
@@ -1423,6 +1512,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           negativeButton={{ label: "Cancel", textColor: colors.onSurfaceVariant }}
           neutralButton={{ label: "Clear", textColor: colors.onSurfaceVariant }}
           onChange={(event, selectedDate) => {
+            console.log("Web DatePicker onChange:", event.type, selectedDate);
             setDateOpen(Platform.OS === "ios");
             if (event.type === "neutralButtonPressed") {
               onUpdate({ hasDate: false });
@@ -1554,7 +1644,7 @@ function EditTextField({ label, value, isDark = false, palette, onChangeText, mu
   );
 }
 
-function StatsTab({ reminders, completedCount, isDark, palette }) {
+function StatsTab({ reminders, completedCount, isDark, palette, isSmallScreen, isLargeScreen }) {
   const colors = palette || getPalette({}, isDark);
   const totalReminders = reminders.length;
   const completionRate = totalReminders > 0 ? Math.round((completedCount / totalReminders) * 100) : 0;
@@ -1569,7 +1659,7 @@ function StatsTab({ reminders, completedCount, isDark, palette }) {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Stats</ScreenTitle>
-      <ScrollView contentContainerStyle={styles.statsContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.statsContent, isSmallScreen && styles.statsContentCompact]} showsVerticalScrollIndicator={false}>
         <View style={[
           styles.statsCard, 
           { 
@@ -1659,7 +1749,7 @@ function StatsTab({ reminders, completedCount, isDark, palette }) {
   );
 }
 
-function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSyncNow, onMessage }) {
+function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSyncNow, onMessage, isSmallScreen, isLargeScreen }) {
   const colors = palette || getPalette({}, isDark);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1735,14 +1825,14 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
         isDark && styles.materialCardDark
       ]}>
         <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
-          <MaterialCommunityIcons name="account-outline" size={40} color={colors.primary} />
+          <MaterialCommunityIcons name="account-outline" size={isSmallScreen ? 36 : 40} color={colors.primary} />
         </View>
         <View>
           <Text style={[styles.accountName, isDark && styles.textOnDark]}>User</Text>
           <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>{accountLabel}</Text>
         </View>
       </View>
-      <ScrollView contentContainerStyle={styles.accountContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.accountContent, isSmallScreen && styles.accountContentCompact]} showsVerticalScrollIndicator={false}>
         {!signedIn ? (
           <View style={[
             styles.planBlock, 
@@ -1821,7 +1911,7 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
   );
 }
 
-function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onMessage }) {
+function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onMessage, isSmallScreen, isLargeScreen }) {
   const colors = palette || getPalette({}, isDark);
   const [settingsPage, setSettingsPage] = useState("main");
   useEffect(() => {
@@ -1845,7 +1935,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
         <ScreenTitle isDark={isDark}>Theme</ScreenTitle>
-        <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
           <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
             <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
@@ -1896,7 +1986,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
         <ScreenTitle isDark={isDark}>Advanced</ScreenTitle>
-        <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
           <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
             <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
@@ -1937,7 +2027,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
         <ScreenTitle isDark={isDark}>Notification</ScreenTitle>
-        <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
           <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
             <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
@@ -2039,7 +2129,7 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Settings</ScreenTitle>
-      <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
         <View style={[
           styles.settingsList, 
           { 
@@ -2083,7 +2173,7 @@ function SettingsSwitch({ title, description, value, onValueChange, isDark, colo
   );
 }
 
-function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvailable, torchAvailable, showMap, setShowMap, reminders, isDark, palette, onMessage, onRefreshBattery, onRefreshNetwork, onRefreshLocation }) {
+function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvailable, torchAvailable, showMap, setShowMap, reminders, isDark, palette, onMessage, onRefreshBattery, onRefreshNetwork, onRefreshLocation, isSmallScreen, isLargeScreen }) {
   const colors = palette || getPalette({}, isDark);
   const [torchOn, setTorchOn] = useState(false);
   const [accelData, setAccelData] = useState(null);
@@ -2169,7 +2259,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Device Features</ScreenTitle>
-      <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
         <View style={[
           styles.settingsPanel,
           {
@@ -3005,6 +3095,10 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
     paddingTop: 8
   },
+  homeListCompact: {
+    paddingBottom: 80,
+    paddingTop: 4
+  },
   emptyHome: {
     alignItems: "center",
     gap: 16,
@@ -3054,9 +3148,17 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 96
   },
+  scheduleContentCompact: {
+    padding: 12,
+    paddingBottom: 80
+  },
   statsContent: {
     padding: 16,
     paddingBottom: 96
+  },
+  statsContentCompact: {
+    padding: 12,
+    paddingBottom: 80
   },
   statsCard: {
     borderRadius: 20,
@@ -3169,6 +3271,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12
   },
+  taskRowCompact: {
+    minHeight: 64,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
   visualBubble: {
     alignItems: "center",
     backgroundColor: "transparent",
@@ -3238,6 +3345,14 @@ const styles = StyleSheet.create({
     width: 36
   },
   editIconButton: {
+    alignItems: "center",
+    backgroundColor: SURFACE_VARIANT,
+    borderRadius: 16,
+    height: 32,
+    justifyContent: "center",
+    width: 32
+  },
+  deleteIconButton: {
     alignItems: "center",
     backgroundColor: SURFACE_VARIANT,
     borderRadius: 16,
@@ -3489,6 +3604,37 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     width: "100%"
   },
+  dateTimeSection: {
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    width: "100%"
+  },
+  dateTimeRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8
+  },
+  dateTimeButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12
+  },
+  dateTimeButtonText: {
+    fontSize: 14,
+    fontWeight: "600"
+  },
+  dateTimeHint: {
+    fontSize: 13,
+    marginTop: 8,
+    fontStyle: "italic"
+  },
   editTextFieldTall: {
     minHeight: 94
   },
@@ -3640,6 +3786,10 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingBottom: 112
   },
+  accountContentCompact: {
+    gap: 12,
+    paddingBottom: 96
+  },
   authInput: {
     borderRadius: 12,
     marginBottom: 10
@@ -3689,6 +3839,9 @@ const styles = StyleSheet.create({
   },
   settingsContent: {
     paddingBottom: 104
+  },
+  settingsContentCompact: {
+    paddingBottom: 88
   },
   backRow: {
     alignItems: "center",
@@ -4126,6 +4279,17 @@ const styles = StyleSheet.create({
     bottom: 80,
     left: 0,
     right: 0
+  },
+  notificationContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000
+  },
+  notificationText: {
+    color: "#FFFFFF",
+    fontWeight: "500"
   }
 });
 

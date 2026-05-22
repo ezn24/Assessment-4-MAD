@@ -64,22 +64,26 @@ async function migrateReminderColumns(db) {
   if (Platform.OS === "web" || !SQLite) {
     return;
   }
-  const columns = await db.getAllAsync("PRAGMA table_info(reminders)");
-  const names = new Set(columns.map((column) => column.name));
-  const migrations = [
-    ["repeat", "ALTER TABLE reminders ADD COLUMN repeat INTEGER NOT NULL DEFAULT 0"],
-    ["repeatUntil", "ALTER TABLE reminders ADD COLUMN repeatUntil TEXT"],
-    ["followUpEnabled", "ALTER TABLE reminders ADD COLUMN followUpEnabled INTEGER NOT NULL DEFAULT 0"],
-    ["followUpCount", "ALTER TABLE reminders ADD COLUMN followUpCount INTEGER NOT NULL DEFAULT 0"],
-    ["followUpIntervalMinutes", "ALTER TABLE reminders ADD COLUMN followUpIntervalMinutes INTEGER NOT NULL DEFAULT 5"],
-    ["timeSet", "ALTER TABLE reminders ADD COLUMN timeSet INTEGER NOT NULL DEFAULT 1"],
-    ["hasDate", "ALTER TABLE reminders ADD COLUMN hasDate INTEGER NOT NULL DEFAULT 1"],
-    ["ringtone", "ALTER TABLE reminders ADD COLUMN ringtone TEXT NOT NULL DEFAULT 'alarm'"]
-  ];
-  for (const [name, statement] of migrations) {
-    if (!names.has(name)) {
-      await db.execAsync(statement);
+  try {
+    const columns = await db.getAllAsync("PRAGMA table_info(reminders)");
+    const names = new Set(columns.map((column) => column.name));
+    const migrations = [
+      ["repeat", "ALTER TABLE reminders ADD COLUMN repeat INTEGER NOT NULL DEFAULT 0"],
+      ["repeatUntil", "ALTER TABLE reminders ADD COLUMN repeatUntil TEXT"],
+      ["followUpEnabled", "ALTER TABLE reminders ADD COLUMN followUpEnabled INTEGER NOT NULL DEFAULT 0"],
+      ["followUpCount", "ALTER TABLE reminders ADD COLUMN followUpCount INTEGER NOT NULL DEFAULT 0"],
+      ["followUpIntervalMinutes", "ALTER TABLE reminders ADD COLUMN followUpIntervalMinutes INTEGER NOT NULL DEFAULT 5"],
+      ["timeSet", "ALTER TABLE reminders ADD COLUMN timeSet INTEGER NOT NULL DEFAULT 1"],
+      ["hasDate", "ALTER TABLE reminders ADD COLUMN hasDate INTEGER NOT NULL DEFAULT 1"],
+      ["ringtone", "ALTER TABLE reminders ADD COLUMN ringtone TEXT NOT NULL DEFAULT 'alarm'"]
+    ];
+    for (const [name, statement] of migrations) {
+      if (!names.has(name)) {
+        await db.execAsync(statement);
+      }
     }
+  } catch (e) {
+    console.error("Migration failed:", e);
   }
 }
 
@@ -89,17 +93,43 @@ export async function listReminders() {
       try {
         const data = await AsyncStorage.getItem("reminders");
         const reminders = data ? JSON.parse(data) : [];
-        return reminders.map(hydrateReminder);
+        return reminders.map(r => {
+          try {
+            return hydrateReminder(r);
+          } catch (e) {
+            console.warn("Failed to hydrate reminder:", r.id, e);
+            return null;
+          }
+        }).filter(Boolean);
       } catch (e) {
         console.warn("Failed to load from AsyncStorage:", e);
         return [];
       }
     }
-    return Object.values(webStorage).map(hydrateReminder);
+    return Object.values(webStorage).map(r => {
+      try {
+        return hydrateReminder(r);
+      } catch (e) {
+        console.warn("Failed to hydrate reminder:", r.id, e);
+        return null;
+      }
+    }).filter(Boolean);
   }
-  const db = await getDatabase();
-  const rows = await db.getAllAsync("SELECT * FROM reminders ORDER BY scheduledAt ASC");
-  return rows.map(hydrateReminder);
+  try {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync("SELECT * FROM reminders ORDER BY scheduledAt ASC");
+    return rows.map(r => {
+      try {
+        return hydrateReminder(r);
+      } catch (e) {
+        console.warn("Failed to hydrate reminder:", r.id, e);
+        return null;
+      }
+    }).filter(Boolean);
+  } catch (e) {
+    console.error("Failed to load reminders from database:", e);
+    return [];
+  }
 }
 
 export async function upsertReminder(reminder) {
@@ -126,38 +156,43 @@ export async function upsertReminder(reminder) {
     return hydrateReminder(item);
   }
 
-  const db = await getDatabase();
-  await db.runAsync(
-    `INSERT OR REPLACE INTO reminders
-    (id, title, description, scheduledAt, visualType, emoji, icon, imageUri, important, repeat, repeatUntil, followUpEnabled, followUpCount, followUpIntervalMinutes, timeSet, hasDate, ringtone, completed, latitude, longitude, locationLabel, notificationId, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      item.id,
-      item.title,
-      item.description,
-      item.scheduledAt,
-      item.visualType,
-      item.emoji,
-      item.icon,
-      item.imageUri,
-      item.important,
-      item.repeat,
-      item.repeatUntil,
-      item.followUpEnabled,
-      item.followUpCount,
-      item.followUpIntervalMinutes,
-      item.timeSet,
-      item.hasDate,
-      item.ringtone,
-      item.completed,
-      item.latitude,
-      item.longitude,
-      item.locationLabel,
-      item.notificationId,
-      item.updatedAt
-    ]
-  );
-  return hydrateReminder(item);
+  try {
+    const db = await getDatabase();
+    await db.runAsync(
+      `INSERT OR REPLACE INTO reminders
+      (id, title, description, scheduledAt, visualType, emoji, icon, imageUri, important, repeat, repeatUntil, followUpEnabled, followUpCount, followUpIntervalMinutes, timeSet, hasDate, ringtone, completed, latitude, longitude, locationLabel, notificationId, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.title,
+        item.description,
+        item.scheduledAt,
+        item.visualType,
+        item.emoji,
+        item.icon,
+        item.imageUri,
+        item.important,
+        item.repeat,
+        item.repeatUntil,
+        item.followUpEnabled,
+        item.followUpCount,
+        item.followUpIntervalMinutes,
+        item.timeSet,
+        item.hasDate,
+        item.ringtone,
+        item.completed,
+        item.latitude,
+        item.longitude,
+        item.locationLabel,
+        item.notificationId,
+        item.updatedAt
+      ]
+    );
+    return hydrateReminder(item);
+  } catch (e) {
+    console.error("Failed to save reminder to database:", e);
+    return hydrateReminder(item);
+  }
 }
 
 export async function deleteReminder(id) {
@@ -201,7 +236,11 @@ export async function seedIfEmpty() {
   if (Platform.OS === "web" || !SQLite) {
     return;
   }
-  const db = await getDatabase();
-  // Assessment 4 starts with an empty task list. Remove legacy demo rows from earlier builds only.
-  await db.runAsync("DELETE FROM reminders WHERE id IN (?, ?)", ["medication", "bring-keys"]);
+  try {
+    const db = await getDatabase();
+    // Assessment 4 starts with an empty task list. Remove legacy demo rows from earlier builds only.
+    await db.runAsync("DELETE FROM reminders WHERE id IN (?, ?)", ["medication", "bring-keys"]);
+  } catch (e) {
+    console.error("Failed to seed database:", e);
+  }
 }
