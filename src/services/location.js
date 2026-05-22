@@ -23,7 +23,19 @@ if (Platform.OS !== "web") {
 
 export async function getCurrentLocation() {
   if (Platform.OS === "web" || !Location) {
-    return null;
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      return null;
+    }
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+        (err) => {
+          console.warn("Web geolocation failed:", err && err.message);
+          resolve(null);
+        },
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+      );
+    });
   }
   const permission = await Location.requestForegroundPermissionsAsync();
   if (!permission.granted) {

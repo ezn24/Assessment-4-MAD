@@ -41,9 +41,28 @@ export async function isBatteryLow(threshold = 20) {
   return level !== null && level < threshold;
 }
 
+async function getWebBatteryInfo() {
+  if (typeof navigator === "undefined" || typeof navigator.getBattery !== "function") {
+    return null;
+  }
+  try {
+    const battery = await navigator.getBattery();
+    const level = Math.round((battery.level || 0) * 100);
+    return {
+      level,
+      state: battery.charging ? "charging" : "discharging",
+      isLow: level < 20,
+      isCharging: Boolean(battery.charging)
+    };
+  } catch (error) {
+    console.warn("Web battery API failed:", error);
+    return null;
+  }
+}
+
 export async function getBatteryInfo() {
   if (!Battery) {
-    return null;
+    return await getWebBatteryInfo();
   }
   try {
     const level = await getBatteryLevel();

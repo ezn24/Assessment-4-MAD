@@ -12,7 +12,13 @@ if (Platform.OS !== "web") {
 
 export async function getNetworkState() {
   if (!Network) {
-    return { isConnected: true, type: "web", isInternetReachable: true };
+    const online = typeof navigator !== "undefined" ? navigator.onLine !== false : true;
+    const conn = typeof navigator !== "undefined" ? (navigator.connection || navigator.mozConnection || navigator.webkitConnection) : null;
+    return {
+      isConnected: online,
+      type: conn?.type || conn?.effectiveType || "web",
+      isInternetReachable: online
+    };
   }
   try {
     const networkState = await Network.getNetworkStateAsync();
@@ -47,7 +53,20 @@ export async function getIpAddress() {
 
 export function subscribeToNetworkState(callback) {
   if (!Network) {
-    return { remove: () => {} };
+    if (typeof window === "undefined") {
+      return { remove: () => {} };
+    }
+    const push = () => {
+      getNetworkState().then(callback).catch(() => {});
+    };
+    window.addEventListener("online", push);
+    window.addEventListener("offline", push);
+    return {
+      remove: () => {
+        window.removeEventListener("online", push);
+        window.removeEventListener("offline", push);
+      }
+    };
   }
   const subscription = Network.addNetworkStateListener((state) => {
     callback({

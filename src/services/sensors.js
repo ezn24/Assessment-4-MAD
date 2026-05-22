@@ -47,6 +47,10 @@ export async function getGyroscopeData() {
   });
 }
 
+// expo-torch's actual API only exposes isAvailableAsync() and setStateAsync(on).
+// We track on/off state locally because the module has no getter.
+let torchState = false;
+
 export async function isTorchAvailable() {
   if (!Torch) {
     return false;
@@ -73,12 +77,10 @@ export async function toggleTorch() {
   if (!isAvailable) {
     throw new Error("Torch not available on this device");
   }
-  const currentState = await Torch.getStateAsync();
-  if (currentState.isAvailable) {
-    await Torch.toggleAvailableAsync();
-    return !currentState.isAvailable;
-  }
-  return false;
+  const next = !torchState;
+  await Torch.setStateAsync(next);
+  torchState = next;
+  return next;
 }
 
 export async function setTorchState(turnOn) {
@@ -89,6 +91,11 @@ export async function setTorchState(turnOn) {
   if (!isAvailable) {
     throw new Error("Torch not available on this device");
   }
-  await Torch.toggleAvailableAsync(turnOn);
-  return turnOn;
+  await Torch.setStateAsync(Boolean(turnOn));
+  torchState = Boolean(turnOn);
+  return torchState;
+}
+
+export function getTorchState() {
+  return torchState;
 }

@@ -672,6 +672,24 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   isDark={isDark}
                   palette={palette}
                   onMessage={setMessage}
+                  onRefreshBattery={() => {
+                    getBatteryInfo().then((info) => {
+                      setBatteryInfo(info);
+                      setMessage(info ? "Battery refreshed" : "Battery unavailable");
+                    }).catch(() => setMessage("Battery refresh failed"));
+                  }}
+                  onRefreshNetwork={() => {
+                    getNetworkState().then((state) => {
+                      setNetworkState(state);
+                      setMessage(state?.isConnected ? "Network refreshed" : "Network offline");
+                    }).catch(() => setMessage("Network refresh failed"));
+                  }}
+                  onRefreshLocation={() => {
+                    getCurrentLocation().then((loc) => {
+                      setCurrentLocation(loc);
+                      setMessage(loc ? "Location refreshed" : "Location unavailable - permission denied?");
+                    }).catch(() => setMessage("Location refresh failed"));
+                  }}
                 />
               ) : (
                 <SettingsTab
@@ -2113,9 +2131,65 @@ function SettingsSwitch({ title, description, value, onValueChange, isDark, colo
   );
 }
 
-function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvailable, torchAvailable, showMap, setShowMap, reminders, isDark, palette, onMessage }) {
+function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvailable, torchAvailable, showMap, setShowMap, reminders, isDark, palette, onMessage, onRefreshBattery, onRefreshNetwork, onRefreshLocation }) {
   const colors = palette || getPalette({}, isDark);
   const [torchOn, setTorchOn] = useState(false);
+  const [accelData, setAccelData] = useState(null);
+  const [gyroData, setGyroData] = useState(null);
+  const [readingSensor, setReadingSensor] = useState(false);
+
+  const readAccelerometer = async () => {
+    setReadingSensor(true);
+    try {
+      const data = await getAccelerometerData();
+      if (data) {
+        setAccelData(data);
+        onMessage("Accelerometer read");
+      } else {
+        onMessage("Accelerometer not available on this device");
+      }
+    } catch (error) {
+      onMessage("Failed to read accelerometer");
+    } finally {
+      setReadingSensor(false);
+    }
+  };
+
+  const readGyroscope = async () => {
+    setReadingSensor(true);
+    try {
+      const data = await getGyroscopeData();
+      if (data) {
+        setGyroData(data);
+        onMessage("Gyroscope read");
+      } else {
+        onMessage("Gyroscope not available on this device");
+      }
+    } catch (error) {
+      onMessage("Failed to read gyroscope");
+    } finally {
+      setReadingSensor(false);
+    }
+  };
+
+  const formatAxis = (data) => {
+    if (!data) return "Tap 'Read' to sample";
+    const fmt = (v) => (typeof v === "number" ? v.toFixed(3) : "?");
+    return `x: ${fmt(data.x)}  y: ${fmt(data.y)}  z: ${fmt(data.z)}`;
+  };
+
+  const networkTypeLabel = (() => {
+    if (!networkState) return "Unknown";
+    if (!networkState.isConnected) return "Offline";
+    const t = (networkState.type || "").toString().toLowerCase();
+    if (t === "cellular" || t.includes("g") || t === "2g" || t === "3g" || t === "4g" || t === "5g") return "Cellular";
+    if (t === "wifi") return "WiFi";
+    if (t === "ethernet" || t === "bluetooth" || t === "wimax" || t === "vpn" || t === "other") {
+      return t.charAt(0).toUpperCase() + t.slice(1);
+    }
+    if (t === "web") return "Web";
+    return "Connected";
+  })();
 
   const handleTorchToggle = async () => {
     try {
@@ -2169,6 +2243,9 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
               </Text>
             </View>
           </View>
+          {onRefreshBattery ? (
+            <Button mode="outlined" onPress={onRefreshBattery} style={styles.deviceButton} icon="refresh">Refresh</Button>
+          ) : null}
         </View>
 
         <View style={[
@@ -2191,10 +2268,13 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
                 {networkState?.isConnected ? "Connected" : "Offline"}
               </Text>
               <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                {networkState?.type === "cellular" ? "Cellular" : networkState?.type === "wifi" ? "WiFi" : "Unknown"}
+                {networkTypeLabel}
               </Text>
             </View>
           </View>
+          {onRefreshNetwork ? (
+            <Button mode="outlined" onPress={onRefreshNetwork} style={styles.deviceButton} icon="refresh">Refresh</Button>
+          ) : null}
         </View>
 
         <View style={[
@@ -2221,14 +2301,19 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
               </Text>
             </View>
           </View>
-          <Button
-            mode="outlined"
-            onPress={() => setShowMap(!showMap)}
-            style={styles.mapButton}
-            icon="map"
-          >
-            {showMap ? "Hide Map" : "Show Map"}
-          </Button>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {onRefreshLocation ? (
+              <Button mode="outlined" onPress={onRefreshLocation} style={[styles.mapButton, { flex: 1, minWidth: 120 }]} icon="crosshairs-gps">Refresh</Button>
+            ) : null}
+            <Button
+              mode="outlined"
+              onPress={() => setShowMap(!showMap)}
+              style={[styles.mapButton, { flex: 1, minWidth: 120 }]}
+              icon="map"
+            >
+              {showMap ? "Hide Map" : "Show Map"}
+            </Button>
+          </View>
           {showMap && currentLocation && (
             <View style={styles.mapContainer}>
               <LocationMap
@@ -2329,20 +2414,18 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
             <MaterialCommunityIcons name="accelerometer" size={24} color={colors.primary} />
             <View style={styles.deviceInfoText}>
               <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Accelerometer</Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                Motion detection available
-              </Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{formatAxis(accelData)}</Text>
             </View>
           </View>
-          <View style={styles.deviceInfoRow}>
+          <Button mode="outlined" onPress={readAccelerometer} loading={readingSensor} disabled={readingSensor} style={styles.deviceButton} icon="play">Read accelerometer</Button>
+          <View style={[styles.deviceInfoRow, { marginTop: 8 }]}>
             <MaterialCommunityIcons name="rotate-3d" size={24} color={colors.primary} />
             <View style={styles.deviceInfoText}>
               <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Gyroscope</Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                Rotation detection available
-              </Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{formatAxis(gyroData)}</Text>
             </View>
           </View>
+          <Button mode="outlined" onPress={readGyroscope} loading={readingSensor} disabled={readingSensor} style={styles.deviceButton} icon="play">Read gyroscope</Button>
         </View>
 
         <View style={[
