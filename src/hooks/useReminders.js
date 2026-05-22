@@ -42,7 +42,7 @@ function normalizeReminder(reminder) {
 function getCurrentFirebaseUserId() {
   const services = getFirebaseServices();
   const user = services?.auth?.currentUser;
-  return user && !user.isAnonymous ? user.uid : null;
+  return user?.uid || null;
 }
 
 async function tryCloudSync(reminders) {

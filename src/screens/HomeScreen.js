@@ -918,7 +918,6 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
   const colors = palette || getPalette({}, isDark);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [visibleMonth, setVisibleMonth] = useState(format(new Date(), "yyyy-MM"));
-  const [viewMode, setViewMode] = useState("month");
   const selectedReminders = reminders.filter((reminder) => shouldShowReminderOnDate(reminder, selectedDate));
   const scheduleMarkedDates = buildScheduleMarkedDates(reminders, visibleMonth, colors.primary);
   const selectedMarkedDates = {
@@ -935,17 +934,9 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit, onRefres
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark} action={
-        <View style={styles.titleActionRow}>
-          <Pressable style={[styles.titleActionButton, { backgroundColor: viewMode === "month" ? colors.primary : colors.surfaceVariant }]} onPress={() => setViewMode("month")}>
-            <MaterialCommunityIcons name="calendar-month" size={20} color={viewMode === "month" ? "#FFFFFF" : colors.onSurfaceVariant} />
-          </Pressable>
-          <Pressable style={[styles.titleActionButton, { backgroundColor: viewMode === "week" ? colors.primary : colors.surfaceVariant }]} onPress={() => setViewMode("week")}>
-            <MaterialCommunityIcons name="calendar-week" size={20} color={viewMode === "week" ? "#FFFFFF" : colors.onSurfaceVariant} />
-          </Pressable>
-          <Pressable style={[styles.titleActionButton, { backgroundColor: colors.primary }]} onPress={() => onEdit(createDraftReminder())}>
-            <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
-          </Pressable>
-        </View>
+        <Pressable style={[styles.titleActionButton, { backgroundColor: colors.primary }]} onPress={() => onEdit(createDraftReminder())}>
+          <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
+        </Pressable>
       }>Schedule</ScreenTitle>
       <ScrollView 
         contentContainerStyle={styles.scheduleContent} 
@@ -2411,7 +2402,7 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
         ]}>
           <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Sensors</Text>
           <View style={styles.deviceInfoRow}>
-            <MaterialCommunityIcons name="accelerometer" size={24} color={colors.primary} />
+            <MaterialCommunityIcons name="motion-sensor" size={24} color={colors.primary} />
             <View style={styles.deviceInfoText}>
               <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Accelerometer</Text>
               <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{formatAxis(accelData)}</Text>

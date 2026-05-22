@@ -1,4 +1,4 @@
-package com.ezn24.vizmindera4
+package com.ezn24.vizminder
 
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -115,7 +115,7 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
   private fun requestCode(value: String): Int = value.hashCode()
 
   companion object {
-    const val ACTION_FIRE_ALARM = "com.ezn24.vizmindera4.ACTION_FIRE_ALARM"
+    const val ACTION_FIRE_ALARM = "com.ezn24.vizminder.ACTION_FIRE_ALARM"
     const val EXTRA_REMINDER_ID = "reminderId"
     const val EXTRA_TITLE = "title"
     const val EXTRA_BODY = "body"
