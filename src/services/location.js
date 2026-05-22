@@ -1,7 +1,11 @@
 import * as Location from "expo-location";
+import { Platform, View, Text } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 export async function getCurrentLocation() {
+  if (Platform.OS === "web") {
+    return null;
+  }
   const permission = await Location.requestForegroundPermissionsAsync();
   if (!permission.granted) {
     return null;
@@ -19,6 +23,14 @@ export function formatCoordinates(reminder) {
 }
 
 export function LocationMap({ location, reminders = [], style }) {
+  if (Platform.OS === "web") {
+    return (
+      <View style={[style, { justifyContent: "center", alignItems: "center", backgroundColor: "#f0f0f0" }]}>
+        <Text>Map not available on web</Text>
+      </View>
+    );
+  }
+
   if (!location || !location.latitude || !location.longitude) {
     return null;
   }

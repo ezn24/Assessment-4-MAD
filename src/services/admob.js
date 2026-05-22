@@ -1,10 +1,24 @@
-import { AdMobInterstitial, AdMobRewarded, BannerAd, BannerAdSize, TestIds } from "react-native-google-mobile-ads";
+import { Platform } from "react-native";
 
-const AD_UNIT_INTERSTITIAL = __DEV__ ? TestIds.INTERSTITIAL : "ca-app-pub-xxxxxxxxxxxxxxxxx/xxxxxxxxxx";
-const AD_UNIT_REWARDED = __DEV__ ? TestIds.REWARDED : "ca-app-pub-xxxxxxxxxxxxxxxxx/xxxxxxxxxx";
-const AD_UNIT_BANNER = __DEV__ ? TestIds.BANNER : "ca-app-pub-xxxxxxxxxxxxxxxxx/xxxxxxxxxx";
+let AdMobInterstitial, AdMobRewarded, BannerAd, BannerAdSize, TestIds;
+
+if (Platform.OS !== "web") {
+  const ads = require("react-native-google-mobile-ads");
+  AdMobInterstitial = ads.AdMobInterstitial;
+  AdMobRewarded = ads.AdMobRewarded;
+  BannerAd = ads.BannerAd;
+  BannerAdSize = ads.BannerAdSize;
+  TestIds = ads.TestIds;
+}
+
+const AD_UNIT_INTERSTITIAL = __DEV__ && TestIds ? TestIds.INTERSTITIAL : "ca-app-pub-xxxxxxxxxxxxxxxxx/xxxxxxxxxx";
+const AD_UNIT_REWARDED = __DEV__ && TestIds ? TestIds.REWARDED : "ca-app-pub-xxxxxxxxxxxxxxxxx/xxxxxxxxxx";
+const AD_UNIT_BANNER = __DEV__ && TestIds ? TestIds.BANNER : "ca-app-pub-xxxxxxxxxxxxxxxxx/xxxxxxxxxx";
 
 export async function loadInterstitial() {
+  if (Platform.OS === "web" || !AdMobInterstitial) {
+    return false;
+  }
   try {
     await AdMobInterstitial.setAdUnitId(AD_UNIT_INTERSTITIAL);
     await AdMobInterstitial.requestAdAsync();
@@ -16,6 +30,9 @@ export async function loadInterstitial() {
 }
 
 export async function showInterstitial() {
+  if (Platform.OS === "web" || !AdMobInterstitial) {
+    return false;
+  }
   try {
     await AdMobInterstitial.showAdAsync();
     return true;
@@ -26,6 +43,9 @@ export async function showInterstitial() {
 }
 
 export async function loadRewardedAd() {
+  if (Platform.OS === "web" || !AdMobRewarded) {
+    return false;
+  }
   try {
     await AdMobRewarded.setAdUnitId(AD_UNIT_REWARDED);
     await AdMobRewarded.requestAdAsync();
@@ -37,6 +57,9 @@ export async function loadRewardedAd() {
 }
 
 export async function showRewardedAd() {
+  if (Platform.OS === "web" || !AdMobRewarded) {
+    return false;
+  }
   try {
     await AdMobRewarded.showAdAsync();
     return true;
@@ -47,6 +70,9 @@ export async function showRewardedAd() {
 }
 
 export function BannerAdComponent({ style }) {
+  if (Platform.OS === "web" || !BannerAd) {
+    return null;
+  }
   return (
     <BannerAd
       unitId={AD_UNIT_BANNER}
