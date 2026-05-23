@@ -728,6 +728,17 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   isSmallScreen={isSmallScreen}
                   isLargeScreen={isLargeScreen}
                 />
+              ) : tab === "settings" ? (
+                <SettingsTab
+                  settings={settings}
+                  onUpdateSettings={updateSettings}
+                  isDark={isDark}
+                  palette={palette}
+                  onReset={confirmResetReminders}
+                  onMessage={setMessage}
+                  isSmallScreen={isSmallScreen}
+                  isLargeScreen={isLargeScreen}
+                />
               ) : null}
             </Animatable.View>
             <BottomNav active={tab} isDark={isDark} palette={palette} onChange={setTab} />
@@ -789,31 +800,45 @@ function ScreenTitle({ children, action, isDark = false }) {
 
 function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, palette, onEdit, onToggle, onAdd, onDelete, onRefresh, refreshing, isSmallScreen, isLargeScreen }) {
   const [query, setQuery] = useState("");
-  const [showTodayOnly, setShowTodayOnly] = useState(false);
+  const [filterMode, setFilterMode] = useState("all"); // all | today | pending | done
   const [deletingId, setDeletingId] = useState(null);
   const isDeletingRef = useRef(false);
   const colors = palette || getPalette(themeColors, isDark);
   const primary = colors.primary;
-  
+
   const today = format(new Date(), "yyyy-MM-dd");
+  const totalCount = reminders.length;
+  const completedCount = reminders.filter((r) => r.completed).length;
+  const pendingCount = totalCount - completedCount;
+  const todayCount = reminders.filter((r) => format(parseISO(r.scheduledAt), "yyyy-MM-dd") === today).length;
+  const completionPct = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
+
   const visibleReminders = reminders.filter((reminder) => {
     const haystack = `${reminder.title} ${reminder.description || ""}`.toLowerCase();
     const matchesQuery = haystack.includes(query.trim().toLowerCase());
-    const matchesToday = showTodayOnly ? format(parseISO(reminder.scheduledAt), "yyyy-MM-dd") === today : true;
-    return matchesQuery && matchesToday;
+    if (!matchesQuery) return false;
+    if (filterMode === "today") return format(parseISO(reminder.scheduledAt), "yyyy-MM-dd") === today;
+    if (filterMode === "pending") return !reminder.completed;
+    if (filterMode === "done") return !!reminder.completed;
+    return true;
   });
 
+  const filterChips = [
+    { key: "all", label: "All", icon: "view-grid-outline", count: totalCount },
+    { key: "today", label: "Today", icon: "calendar-today", count: todayCount },
+    { key: "pending", label: "Pending", icon: "clock-outline", count: pendingCount },
+    { key: "done", label: "Done", icon: "check-circle-outline", count: completedCount }
+  ];
+
   const handleDelete = (reminder) => {
-    if (isDeletingRef.current || deletingId === reminder.id) {
+    if (isDeletingRef.current) {
       return;
     }
     isDeletingRef.current = true;
-    setDeletingId(reminder.id);
     onDelete(reminder);
     setTimeout(() => {
       isDeletingRef.current = false;
-      setDeletingId(null);
-    }, 500);
+    }, 800);
   };
 
   return (
@@ -825,6 +850,96 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
         showsVerticalScrollIndicator={false}
         data={visibleReminders}
         keyExtractor={(item) => item.id}
+        ListHeaderComponent={
+          <View style={styles.homeHeaderWrap}>
+            <Animatable.View animation="fadeInDown" duration={500} useNativeDriver>
+              <View style={[
+                styles.heroBanner,
+                { backgroundColor: colors.surface, borderColor: colors.outline },
+                isDark && styles.cardOnDark
+              ]}>
+                <View style={[styles.heroBannerAccent, { backgroundColor: colors.primary }]} />
+                <View style={styles.heroBannerRow}>
+                  <View style={styles.heroBannerCopy}>
+                    <Text style={[styles.heroBannerEyebrow, { color: colors.primary }]}>
+                      {format(new Date(), "EEEE, MMM d")}
+                    </Text>
+                    <Text style={[styles.heroBannerTitle, isDark && styles.textOnDark]}>
+                      {pendingCount === 0
+                        ? "All caught up"
+                        : pendingCount === 1
+                          ? "1 reminder pending"
+                          : `${pendingCount} reminders pending`}
+                    </Text>
+                    <Text style={[styles.heroBannerSubtitle, isDark && styles.mutedOnDark]}>
+                      {completedCount} of {totalCount} completed
+                    </Text>
+                  </View>
+                  <View style={[styles.heroRing, { borderColor: colors.surfaceVariant }]}>
+                    <View style={[styles.heroRingInner, { backgroundColor: `${colors.primary}15` }]}>
+                      <Text style={[styles.heroRingValue, { color: colors.primary }]}>{completionPct}%</Text>
+                      <Text style={[styles.heroRingLabel, isDark && styles.mutedOnDark]}>done</Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={[styles.heroProgressTrack, { backgroundColor: colors.surfaceVariant }]}>
+                  <Animatable.View
+                    animation="fadeInLeft"
+                    duration={700}
+                    useNativeDriver
+                    style={[styles.heroProgressFill, { width: `${completionPct}%`, backgroundColor: colors.primary }]}
+                  />
+                </View>
+              </View>
+            </Animatable.View>
+
+            <Animatable.View animation="fadeInUp" delay={120} duration={500} useNativeDriver>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow}>
+                {filterChips.map((chip) => {
+                  const active = filterMode === chip.key;
+                  return (
+                    <Pressable
+                      key={chip.key}
+                      onPress={() => setFilterMode(chip.key)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Filter: ${chip.label}`}
+                      style={[
+                        styles.filterChip,
+                        isSmallScreen && styles.filterChipCompact,
+                        {
+                          backgroundColor: active ? colors.primary : colors.surface,
+                          borderColor: active ? colors.primary : colors.outline
+                        }
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={chip.icon}
+                        size={isSmallScreen ? 12 : 14}
+                        color={active ? colors.onPrimary : colors.onSurfaceVariant}
+                      />
+                      <Text style={[
+                        styles.filterChipText,
+                        isSmallScreen && styles.filterChipTextCompact,
+                        { color: active ? colors.onPrimary : colors.onSurface }
+                      ]}>{chip.label}</Text>
+                      <View style={[
+                        styles.filterChipCount,
+                        isSmallScreen && styles.filterChipCountCompact,
+                        { backgroundColor: active ? "rgba(255,255,255,0.22)" : colors.surfaceVariant }
+                      ]}>
+                        <Text style={[
+                          styles.filterChipCountText,
+                          isSmallScreen && styles.filterChipCountTextCompact,
+                          { color: active ? colors.onPrimary : colors.onSurfaceVariant }
+                        ]}>{chip.count}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </Animatable.View>
+          </View>
+        }
         ListEmptyComponent={
           !loaded ? (
             <Animatable.View animation="fadeIn" duration={400} style={styles.emptyHome}>
@@ -852,56 +967,75 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
             duration={deletingId === reminder.id ? 350 : 320} 
             useNativeDriver
           >
-            <Card
+            <Pressable
               style={[
-                styles.taskRow,
-                isSmallScreen && styles.taskRowCompact,
+                styles.tableTaskRow,
+                isSmallScreen && styles.tableTaskRowCompact,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: reminder.completed ? colors.outline : colors.primary,
+                  borderWidth: reminder.completed ? 1 : 1,
+                  opacity: reminder.completed ? 0.5 : 1
+                },
                 isDark && styles.cardOnDark
               ]}
               onPress={() => onEdit(reminder)}
-              elevation={3}
-              mode="elevated"
+              accessibilityRole="button"
+              accessibilityLabel={`Edit reminder: ${reminder.title}`}
             >
-              <Card.Content style={styles.cardContent}>
-                <View style={styles.taskMain}>
-                  <View style={styles.visualBubble}>
-                    <VisualCue reminder={reminder} size={isSmallScreen ? 40 : 48} iconSize={isSmallScreen ? 20 : 24} compact palette={colors} />
-                  </View>
-                  <View style={styles.taskCopy}>
-                    <View style={styles.taskHeader}>
-                      <Text style={[styles.taskTime, { color: primary }]}>
-                        {format(parseISO(reminder.scheduledAt), "h:mm a")} · {getCountdownLabel(reminder.scheduledAt)}
+              <View style={styles.tableTaskLeft}>
+                <View style={[styles.tableTaskIcon, { backgroundColor: `${colors.primary}15` }]}>
+                  <VisualCue reminder={reminder} size={28} iconSize={14} compact palette={colors} />
+                </View>
+                <View style={styles.tableTaskInfo}>
+                  <Text style={[styles.tableTaskTitle, isDark && styles.textOnDark, reminder.completed && styles.taskCompleted]} numberOfLines={1}>
+                    {reminder.title}
+                  </Text>
+                  <View style={styles.tableTaskMeta}>
+                    <Text style={[styles.tableTaskTime, { color: colors.primary }]}>
+                      {format(parseISO(reminder.scheduledAt), "h:mm a")}
+                    </Text>
+                    {reminder.priority === "high" && (
+                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.error}1F` }]}>
+                        <MaterialCommunityIcons name="flag" size={9} color={colors.error} />
+                      </View>
+                    )}
+                    {reminder.repeat && (
+                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.secondary || colors.primary}1F` }]}>
+                        <MaterialCommunityIcons name="repeat" size={9} color={colors.secondary || colors.primary} />
+                      </View>
+                    )}
+                    {reminder.hasDate && reminder.locationLabel && (
+                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.tertiary || colors.primary}1F` }]}>
+                        <MaterialCommunityIcons name="map-marker" size={9} color={colors.tertiary || colors.primary} />
+                      </View>
+                    )}
+                    {reminder.followUpEnabled && (
+                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.primary}1F` }]}>
+                        <MaterialCommunityIcons name="bell-ring" size={9} color={colors.primary} />
+                      </View>
+                    )}
+                    {reminder.description ? (
+                      <Text style={[styles.tableTaskDesc, isDark && styles.mutedOnDark]} numberOfLines={1}>
+                        {reminder.description}
                       </Text>
-                      {reminder.priority === "high" && (
-                        <Chip icon="flag" compact mode="flat" style={styles.priorityChip} textStyle={styles.chipText}>High</Chip>
-                      )}
-                    </View>
-                    <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
-                    {reminder.description ? <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>{reminder.description}</Text> : null}
+                    ) : null}
                   </View>
                 </View>
-                <View style={styles.taskActions}>
-                  {showReminderDebugButton ? (
-                    <IconButton icon="play-circle-outline" size={24} iconColor={primary} onPress={() => onTestReminder(reminder)} />
-                  ) : null}
-                  <IconButton icon="pencil" size={20} iconColor={colors.onSurfaceVariant} onPress={() => onEdit(reminder)} />
-                  <IconButton 
-                    icon="trash-can" 
-                    size={20} 
-                    iconColor={deletingId === reminder.id ? colors.onSurfaceDisabled : (colors.error || ERROR)} 
-                    onPress={() => handleDelete(reminder)}
-                    disabled={deletingId === reminder.id}
-                  />
-                  <Switch 
-                    value={!reminder.completed} 
-                    color={primary} 
-                    onValueChange={(value) => onToggle(reminder, !value)}
-                    accessibilityLabel={reminder.completed ? "Mark as incomplete" : "Mark as complete"}
-                    accessibilityRole="switch"
-                  />
-                </View>
-              </Card.Content>
-            </Card>
+              </View>
+              <View style={styles.tableTaskRight}>
+                <Text style={[styles.tableTaskCountdown, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
+                  {getCountdownLabel(reminder.scheduledAt)}
+                </Text>
+                <Switch 
+                  value={!reminder.completed} 
+                  color={colors.primary} 
+                  onValueChange={(value) => onToggle(reminder, !value)}
+                  accessibilityLabel={reminder.completed ? "Mark as incomplete" : "Mark as complete"}
+                  accessibilityRole="switch"
+                />
+              </View>
+            </Pressable>
           </Animatable.View>
         )}
       />
@@ -1622,58 +1756,136 @@ function StatsTab({ reminders, completedCount, isDark, palette, isSmallScreen, i
   }).length;
   const streak = reminders.reduce((max, r) => Math.max(max, r.streak || 0), 0);
 
+  const statsCards = [
+    {
+      icon: "chart-line",
+      iconColor: colors.primary,
+      title: "Completion Rate",
+      value: `${completionRate}%`,
+      subtitle: `${completedCount} of ${totalReminders} completed`,
+      showProgress: true,
+      progress: completionRate
+    },
+    {
+      icon: "star",
+      iconColor: "#FF9500",
+      title: "Important Reminders",
+      value: importantReminders.toString(),
+      subtitle: `${completedImportant} completed`,
+      isDouble: true,
+      secondValue: completedImportant.toString(),
+      secondLabel: "Completed"
+    },
+    {
+      icon: "calendar-today",
+      iconColor: "#34C759",
+      title: "Today's Reminders",
+      value: todayReminders.toString(),
+      subtitle: "Scheduled for today"
+    },
+    {
+      icon: "fire",
+      iconColor: "#FF3B30",
+      title: "Best Streak",
+      value: streak.toString(),
+      subtitle: "Consecutive days"
+    }
+  ];
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Stats</ScreenTitle>
       <ScrollView contentContainerStyle={[styles.statsContent, isSmallScreen && styles.statsContentCompact]} showsVerticalScrollIndicator={false}>
-        <Card style={styles.statsCard} elevation={3} mode="elevated">
-          <Card.Content>
-            <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Completion Rate</Text>
-            <View style={styles.statsValueContainer}>
-              <Text style={[styles.statsValue, { color: colors.primary }]}>{completionRate}%</Text>
-              <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>{completedCount} of {totalReminders} completed</Text>
-            </View>
-            <View style={[styles.progressBar, { backgroundColor: colors.surfaceVariant }]}>
-              <View style={[styles.progressFill, { width: `${completionRate}%`, backgroundColor: colors.primary }]} />
-            </View>
-          </Card.Content>
-        </Card>
-
-        <Card style={styles.statsCard} elevation={3} mode="elevated">
-          <Card.Content>
-            <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Important Reminders</Text>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: colors.primary }]}>{importantReminders}</Text>
-                <Text style={[styles.statLabel, isDark && styles.mutedOnDark]}>Total</Text>
+        <Animatable.View animation="fadeInDown" duration={500} useNativeDriver>
+          <View style={[
+            styles.statsHeroCard,
+            { backgroundColor: colors.surface, borderColor: colors.outline },
+            isDark && styles.cardOnDark
+          ]}>
+            <View style={[styles.statsHeroAccent, { backgroundColor: colors.primary }]} />
+            <View style={styles.statsHeroRow}>
+              <View style={styles.statsHeroCopy}>
+                <Text style={[styles.statsHeroEyebrow, { color: colors.primary }]}>Overall progress</Text>
+                <Text style={[styles.statsHeroTitle, isDark && styles.textOnDark]}>
+                  {completionRate === 100 && totalReminders > 0 ? "Perfect day" : completionRate >= 75 ? "Great pace" : completionRate >= 40 ? "Keep going" : "Let's get started"}
+                </Text>
+                <Text style={[styles.statsHeroSubtitle, isDark && styles.mutedOnDark]}>
+                  {completedCount} of {totalReminders} reminders completed
+                </Text>
               </View>
-              <View style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: colors.success || SUCCESS }]}>{completedImportant}</Text>
-                <Text style={[styles.statLabel, isDark && styles.mutedOnDark]}>Completed</Text>
+              <Animatable.View animation="zoomIn" duration={600} useNativeDriver style={[styles.statsHeroRing, { borderColor: colors.primary, backgroundColor: `${colors.primary}12` }]}>
+                <Text style={[styles.statsHeroRingValue, { color: colors.primary }]}>{completionRate}%</Text>
+              </Animatable.View>
+            </View>
+            <View style={[styles.statsHeroProgressTrack, { backgroundColor: colors.surfaceVariant }]}>
+              <Animatable.View
+                animation="fadeInLeft"
+                duration={800}
+                useNativeDriver
+                style={[styles.statsHeroProgressFill, { width: `${completionRate}%`, backgroundColor: colors.primary }]}
+              />
+            </View>
+            <View style={styles.statsHeroMetaRow}>
+              <View style={styles.statsHeroMetaItem}>
+                <MaterialCommunityIcons name="calendar-today" size={14} color={colors.onSurfaceVariant} />
+                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{todayReminders} today</Text>
+              </View>
+              <View style={styles.statsHeroMetaItem}>
+                <MaterialCommunityIcons name="star-outline" size={14} color={colors.onSurfaceVariant} />
+                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{importantReminders} important</Text>
+              </View>
+              <View style={styles.statsHeroMetaItem}>
+                <MaterialCommunityIcons name="fire" size={14} color={colors.onSurfaceVariant} />
+                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{streak} streak</Text>
               </View>
             </View>
-          </Card.Content>
-        </Card>
+          </View>
+        </Animatable.View>
 
-        <Card style={styles.statsCard} elevation={3} mode="elevated">
-          <Card.Content>
-            <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Today's Reminders</Text>
-            <View style={styles.statsValueContainer}>
-              <Text style={[styles.statsValue, { color: colors.primary }]}>{todayReminders}</Text>
-              <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>Reminders scheduled for today</Text>
-            </View>
-          </Card.Content>
-        </Card>
-
-        <Card style={styles.statsCard} elevation={3} mode="elevated">
-          <Card.Content>
-            <Text style={[styles.statsTitle, isDark && styles.textOnDark]}>Best Streak</Text>
-            <View style={styles.statsValueContainer}>
-              <Text style={[styles.statsValue, { color: colors.warning || "#FF9500" }]}>{streak}</Text>
-              <Text style={[styles.statsLabel, isDark && styles.mutedOnDark]}>Consecutive days completed</Text>
-            </View>
-          </Card.Content>
-        </Card>
+        <View style={styles.statsGrid}>
+          {statsCards.map((card, index) => (
+            <Animatable.View 
+              key={card.title} 
+              animation="fadeInUp" 
+              delay={150 + index * 90} 
+              duration={420} 
+              useNativeDriver
+            >
+              <Pressable style={[
+                styles.modernStatsCard,
+                isSmallScreen && styles.modernStatsCardCompact,
+                isLargeScreen && styles.modernStatsCardLarge,
+                { 
+                  backgroundColor: colors.surface,
+                  borderColor: colors.outline
+                },
+                isDark && styles.cardOnDark
+              ]}>
+                <View style={[styles.statsCardTopAccent, { backgroundColor: card.iconColor }]} />
+                <View style={[styles.statsCardIcon, { backgroundColor: `${card.iconColor}20` }]}>
+                  <MaterialCommunityIcons name={card.icon} size={22} color={card.iconColor} />
+                </View>
+                <Text style={[styles.modernStatsTitle, isDark && styles.textOnDark]}>{card.title}</Text>
+                <Text style={[styles.modernStatsValue, { color: card.iconColor }]}>{card.value}</Text>
+                {card.isDouble ? (
+                  <View style={styles.statsDoubleRow}>
+                    <Text style={[styles.modernStatsSubtitle, isDark && styles.mutedOnDark]}>{card.subtitle}</Text>
+                    <View style={[styles.statsMiniBadge, { backgroundColor: `${colors.success}20` }]}>
+                      <Text style={[styles.statsMiniBadgeText, { color: colors.success }]}>{card.secondValue}</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={[styles.modernStatsSubtitle, isDark && styles.mutedOnDark]}>{card.subtitle}</Text>
+                )}
+                {card.showProgress && (
+                  <View style={[styles.modernProgressBar, { backgroundColor: colors.surfaceVariant }]}>
+                    <View style={[styles.modernProgressFill, { width: `${card.progress}%`, backgroundColor: card.iconColor }]} />
+                  </View>
+                )}
+              </Pressable>
+            </Animatable.View>
+          ))}
+        </View>
       </ScrollView>
     </View>
   );
@@ -1687,207 +1899,9 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncError, setSyncError] = useState("");
-  const [settingsPage, setSettingsPage] = useState("main");
 
   const signedIn = authUser && !authUser.isAnonymous && authUser.uid !== "offline-user";
   const accountLabel = signedIn ? authUser.email || "Email account" : authUser?.isAnonymous ? "Anonymous session" : "Not signed in";
-
-  useEffect(() => {
-    if (Platform.OS !== "android" || settingsPage === "main") {
-      return undefined;
-    }
-    const backSubscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setSettingsPage("main");
-      return true;
-    });
-    return () => backSubscription.remove();
-  }, [settingsPage]);
-
-  if (settingsPage === "theme") {
-    return (
-      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
-        <ScreenTitle isDark={isDark}>Theme</ScreenTitle>
-        <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
-          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
-            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
-            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Account</Text>
-          </Pressable>
-          <View style={[
-            styles.settingsPanel,
-            {
-              backgroundColor: colors.surface,
-              boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-              elevation: 2
-            },
-            isDark && styles.materialCardDark
-          ]}>
-            <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Theme mode</Text>
-            <View style={styles.segmentedControl}>
-              {[
-                ["light", "Light"],
-                ["dark", "Dark"]
-              ].map(([mode, label]) => (
-                <Pressable
-                  key={mode}
-                  style={[styles.segmentButton, { borderColor: colors.outline }, settings.themeMode === mode && { backgroundColor: colors.primary }]}
-                  onPress={() => onUpdateSettings({ themeMode: mode })}
-                >
-                  <Text style={[styles.segmentText, isDark && styles.mutedOnDark, settings.themeMode === mode && styles.segmentTextActive]}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.settingsSwitchRow}>
-              <View style={styles.settingsCopy}>
-                <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Follow system Material colors</Text>
-                <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                  {settings.followSystemColors ? "Use system color preference when available." : "Use VizMinder purple palette."}
-                </Text>
-              </View>
-              <Switch value={settings.followSystemColors} color={colors.primary} onValueChange={(value) => onUpdateSettings({ followSystemColors: value })} />
-            </View>
-          </View>
-        </ScrollView>
-      </View>
-    );
-  }
-
-  if (settingsPage === "advanced") {
-    return (
-      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
-        <ScreenTitle isDark={isDark}>Advanced</ScreenTitle>
-        <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
-          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
-            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
-            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Account</Text>
-          </Pressable>
-          <View style={[
-            styles.settingsPanel,
-            {
-              backgroundColor: colors.surface,
-              boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-              elevation: 2
-            },
-            isDark && styles.materialCardDark
-          ]}>
-            <View style={styles.settingsSwitchRow}>
-              <View style={styles.settingsCopy}>
-                <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Reminder debug button</Text>
-                <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>Show the Home test button for the Yes/No prompt.</Text>
-              </View>
-              <Switch
-                value={settings.showReminderDebugButton}
-                color={colors.primary}
-                onValueChange={(value) => onUpdateSettings({ showReminderDebugButton: value })}
-              />
-            </View>
-            <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-              The installed Android APK uses native AlarmManager and a lock-screen Activity for full-screen visual reminders. Android may still require notification and exact alarm permission.
-            </Text>
-          </View>
-        </ScrollView>
-      </View>
-    );
-  }
-
-  if (settingsPage === "notification") {
-    return (
-      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
-        <ScreenTitle isDark={isDark}>Notification</ScreenTitle>
-        <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
-          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
-            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
-            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Account</Text>
-          </Pressable>
-          <View style={[
-            styles.settingsPanel,
-            {
-              backgroundColor: colors.surface,
-              boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-              elevation: 2
-            },
-            isDark && styles.materialCardDark
-          ]}>
-            <SettingsSwitch
-              isDark={isDark}
-              colors={colors}
-              title="Scheduled reminders"
-              description="Allow VizMinder to schedule time-based alerts."
-              value={settings.reminderNotifications !== false}
-              onValueChange={(value) => onUpdateSettings({ reminderNotifications: value })}
-            />
-            <SettingsSwitch
-              isDark={isDark}
-              colors={colors}
-              title="Full-screen alarm screen"
-              description="Show the Yes/No reminder screen for Android alarm alerts."
-              value={settings.fullScreenAlerts !== false}
-              onValueChange={(value) => onUpdateSettings({ fullScreenAlerts: value })}
-            />
-            <SettingsSwitch
-              isDark={isDark}
-              colors={colors}
-              title="Sound"
-              description="Play the selected reminder ringtone."
-              value={settings.notificationSound !== false}
-              onValueChange={(value) => onUpdateSettings({ notificationSound: value })}
-            />
-            <SettingsSwitch
-              isDark={isDark}
-              colors={colors}
-              title="Vibration"
-              description="Allow Android alarm alerts to vibrate."
-              value={settings.notificationVibration !== false}
-              onValueChange={(value) => onUpdateSettings({ notificationVibration: value })}
-            />
-            <SettingsSwitch
-              isDark={isDark}
-              colors={colors}
-              title="Follow-up reminders"
-              description="Schedule extra alerts after a Yes or No response when a task enables follow-up."
-              value={settings.followUpNotifications !== false}
-              onValueChange={(value) => onUpdateSettings({ followUpNotifications: value })}
-            />
-            <Button
-              mode="contained"
-              buttonColor={colors.primary}
-              onPress={async () => {
-                const granted = await ensureNotificationPermission();
-                onMessage(granted ? "Notification permission is enabled." : "Notification permission was not granted.");
-              }}
-            >
-              Request notification permission
-            </Button>
-            <Button mode="outlined" textColor={colors.primary} onPress={() => Linking.openSettings()}>
-              Open Android app notification settings
-            </Button>
-            <Button
-              mode="text"
-              textColor={colors.primary}
-              onPress={async () => {
-                const granted = await ensureNotificationPermission();
-                if (!granted) {
-                  onMessage("Notification permission was not granted.");
-                  return;
-                }
-                await Notifications.scheduleNotificationAsync({
-                  content: {
-                    title: "VizMinder test notification",
-                    body: "Notifications are enabled for installed APK builds.",
-                    sound: settings.notificationSound === false ? null : "default",
-                    priority: Notifications.AndroidNotificationPriority.MAX
-                  },
-                  trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 3, channelId: REMINDER_CHANNEL_ID }
-                });
-                onMessage("Test notification scheduled.");
-              }}
-            >
-              Send test notification
-            </Button>
-          </View>
-        </ScrollView>
-      </View>
-    );
-  }
 
   const submitEmailAuth = async (mode) => {
     setSyncError("");
@@ -1940,92 +1954,170 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Account</ScreenTitle>
-      <Card style={styles.accountCard} elevation={3} mode="elevated">
-        <Card.Content style={styles.accountCardContent}>
-          <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
-            <MaterialCommunityIcons name="account" size={isSmallScreen ? 36 : 40} color={colors.primary} />
-          </View>
-          <View>
-            <Text style={[styles.accountName, isDark && styles.textOnDark]}>User</Text>
-            <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>{accountLabel}</Text>
-          </View>
-        </Card.Content>
-      </Card>
       <ScrollView contentContainerStyle={[styles.accountContent, isSmallScreen && styles.accountContentCompact]} showsVerticalScrollIndicator={false}>
-        {!signedIn ? (
-          <Card style={styles.planBlock} elevation={2} mode="elevated">
-            <Card.Content>
-              <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sign In</Text>
-              <TextInput value={email} onChangeText={setEmail} label="Email" autoCapitalize="none" keyboardType="email-address" style={styles.authInput} textColor={colors.onSurface} />
-              <TextInput value={password} onChangeText={setPassword} label="Password" secureTextEntry style={styles.authInput} textColor={colors.onSurface} />
-              <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Password requires at least 8 characters, 2 letters, and 6 numbers.</Text>
-              {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
-              <View style={styles.planActions}>
-                <Button mode="outlined" textColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("login")}>Sign In</Button>
-                <Button mode="contained" buttonColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("register")}>Create Account</Button>
+        <Animatable.View animation="fadeInDown" duration={500} useNativeDriver>
+          <View style={[
+            styles.modernAccountCard,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.outline
+            },
+            isDark && styles.cardOnDark
+          ]}>
+            <View pointerEvents="none" style={[styles.accountTint, { backgroundColor: `${colors.primary}12` }]} />
+            <Animatable.View animation="zoomIn" duration={500} useNativeDriver style={[styles.accountAvatar, { backgroundColor: `${colors.primary}25`, borderColor: `${colors.primary}40` }]}>
+              <MaterialCommunityIcons name="account-circle" size={isSmallScreen ? 44 : 52} color={colors.primary} />
+            </Animatable.View>
+            <View style={styles.accountInfo}>
+              <Text style={[styles.accountName, isDark && styles.textOnDark]}>{signedIn ? "Welcome back" : "Guest user"}</Text>
+              <Text style={[styles.accountEmail, isDark && styles.mutedOnDark]} numberOfLines={1}>{accountLabel}</Text>
+              <View style={[styles.accountStatusBadge, { backgroundColor: signedIn ? `${colors.success}20` : `${colors.onSurfaceVariant}20`, alignSelf: "flex-start", marginTop: 6 }]}>
+                <MaterialCommunityIcons name={signedIn ? "check-circle" : "alert-circle"} size={14} color={signedIn ? colors.success : colors.onSurfaceVariant} />
+                <Text style={[styles.accountStatusText, { color: signedIn ? colors.success : colors.onSurfaceVariant }]}>
+                  {signedIn ? "Connected" : "Offline"}
+                </Text>
               </View>
-            </Card.Content>
-          </Card>
-        ) : (
-          <Card style={styles.planBlock} elevation={2} mode="elevated">
-            <Card.Content>
-              <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Signed In</Text>
-              <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>{accountLabel}</Text>
+            </View>
+          </View>
+        </Animatable.View>
+
+        {!signedIn ? (
+          <Animatable.View animation="fadeInUp" delay={100} duration={500} useNativeDriver>
+            <View style={[
+              styles.modernAuthCard,
+              { 
+                backgroundColor: colors.surface,
+                borderColor: colors.outline
+              },
+              isDark && styles.cardOnDark
+            ]}>
+              <View style={styles.authHeader}>
+                <MaterialCommunityIcons name="login" size={32} color={colors.primary} />
+                <Text style={[styles.authTitle, isDark && styles.textOnDark]}>Sign In</Text>
+                <Text style={[styles.authSubtitle, isDark && styles.mutedOnDark]}>Access your reminders across devices</Text>
+              </View>
+              <TextInput 
+                value={email} 
+                onChangeText={setEmail} 
+                label="Email" 
+                autoCapitalize="none" 
+                keyboardType="email-address" 
+                mode="outlined"
+                style={styles.authInput} 
+                textColor={colors.onSurface}
+                outlineColor={colors.outline}
+                activeOutlineColor={colors.primary}
+              />
+              <TextInput 
+                value={password} 
+                onChangeText={setPassword} 
+                label="Password" 
+                secureTextEntry 
+                mode="outlined"
+                style={styles.authInput} 
+                textColor={colors.onSurface}
+                outlineColor={colors.outline}
+                activeOutlineColor={colors.primary}
+              />
               {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
-              <Button mode="outlined" textColor={colors.primary} onPress={() => signOutUser().catch((error) => setSyncError(error.message))}>Sign Out</Button>
-            </Card.Content>
-          </Card>
+              <View style={styles.authActions}>
+                <Button 
+                  mode="outlined" 
+                  textColor={colors.primary} 
+                  style={styles.authButton} 
+                  onPress={() => submitEmailAuth("login")}
+                  icon="login"
+                >
+                  Sign In
+                </Button>
+                <Button 
+                  mode="contained" 
+                  buttonColor={colors.primary} 
+                  style={styles.authButton} 
+                  onPress={() => submitEmailAuth("register")}
+                  icon="account-plus"
+                >
+                  Create Account
+                </Button>
+              </View>
+            </View>
+          </Animatable.View>
+        ) : (
+          <Animatable.View animation="fadeInUp" delay={100} duration={500} useNativeDriver>
+            <View style={[
+              styles.modernAuthCard,
+              { 
+                backgroundColor: colors.surface,
+                borderColor: colors.outline
+              },
+              isDark && styles.cardOnDark
+            ]}>
+              <View style={styles.authHeader}>
+                <MaterialCommunityIcons name="cloud-check" size={32} color={colors.success} />
+                <Text style={[styles.authTitle, isDark && styles.textOnDark]}>Cloud Sync</Text>
+                <Text style={[styles.authSubtitle, isDark && styles.mutedOnDark]}>Sync reminders across devices</Text>
+              </View>
+              <View style={styles.syncStats}>
+                <View style={styles.syncStatItem}>
+                  <Text style={[styles.syncStatValue, { color: colors.primary }]}>{completedCount}</Text>
+                  <Text style={[styles.syncStatLabel, isDark && styles.mutedOnDark]}>Completed</Text>
+                </View>
+                <View style={styles.syncStatItem}>
+                  <Text style={[styles.syncStatValue, { color: colors.primary }]}>{reminders.length}</Text>
+                  <Text style={[styles.syncStatLabel, isDark && styles.mutedOnDark]}>Total</Text>
+                </View>
+              </View>
+              {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
+              <View style={[styles.syncProgressContainer, { backgroundColor: colors.surfaceVariant }]}>
+                <View style={[styles.syncProgressBar, { backgroundColor: colors.primary, width: `${Math.round(syncProgress * 100)}%` }]} />
+              </View>
+              <Button 
+                mode="contained" 
+                buttonColor={colors.primary} 
+                loading={syncing} 
+                disabled={syncing} 
+                onPress={runSync}
+                style={styles.syncButton}
+                icon="cloud-sync"
+              >
+                {syncing ? "Syncing..." : "Sync Now"}
+              </Button>
+              <Button 
+                mode="outlined" 
+                textColor={colors.error} 
+                onPress={() => signOutUser().catch((error) => setSyncError(error.message))}
+                style={styles.signOutButton}
+                icon="logout"
+              >
+                Sign Out
+              </Button>
+            </View>
+          </Animatable.View>
         )}
 
-        {signedIn ? (
-        <Card style={styles.planBlock} elevation={2} mode="elevated">
-          <Card.Content>
-            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sync Data</Text>
-            <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Completed reminders: {completedCount}</Text>
-            <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Sync status: {syncing ? "Syncing" : syncProgress === 1 ? "Synced" : "Idle"}</Text>
-            <View style={[styles.progressTrack, { backgroundColor: colors.surfaceVariant }]}>
-              <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.round(syncProgress * 100)}%` }]} />
-            </View>
-            <Button mode="contained" buttonColor={colors.primary} loading={syncing} disabled={syncing} onPress={runSync}>Sync now</Button>
-            <View style={styles.syncList}>
-              {syncRows.length ? syncRows.map((row) => (
-                <View key={row.id} style={styles.syncRow}>
-                  <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>{row.title}</Text>
-                  <Text style={[styles.syncStatus, row.status === "Synced" ? styles.syncOk : styles.syncWarn]}>{row.status}</Text>
-                </View>
-              )) : <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>Press sync to inspect current Firestore status.</Text>}
-            </View>
-          </Card.Content>
-        </Card>
-        ) : null}
-
-        <View style={[styles.sectionDivider, { backgroundColor: colors.outline }]} />
-
-        <Card style={styles.planBlock} elevation={2} mode="elevated">
-          <Card.Content>
-            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Settings</Text>
-            <View style={styles.settingsList}>
-              {[
-                ["palette", "Theme", "Light, dark, and Material color options.", () => setSettingsPage("theme")],
-                ["cog", "Advanced", "Debug controls and native alarm notes.", () => setSettingsPage("advanced")],
-                ["bell-ring", "Notification", "Notification permissions, alert sound, and system settings.", () => setSettingsPage("notification")],
-                ["alert-circle", "Reset Reminders", "Clear all reminders on this device.", onReset]
-              ].map(([icon, title, copy, action]) => (
-                <View key={title}>
-                  <Pressable android_ripple={{ color: colors.surfaceVariant }} style={styles.settingsRow} onPress={action}>
-                    <MaterialCommunityIcons name={icon} size={24} color={colors.onSurfaceVariant} />
-                    <View style={styles.settingsCopy}>
-                      <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>{title}</Text>
-                      <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{copy}</Text>
-                    </View>
-                    <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
-                  </Pressable>
-                  <Divider style={styles.settingsDivider} />
+        {signedIn && syncRows.length > 0 && (
+          <Animatable.View animation="fadeInUp" delay={200} duration={500} useNativeDriver>
+            <View style={[
+              styles.modernSyncListCard,
+              { 
+                backgroundColor: colors.surface,
+                borderColor: colors.outline
+              },
+              isDark && styles.cardOnDark
+            ]}>
+              <Text style={[styles.syncListTitle, isDark && styles.textOnDark]}>Sync Status</Text>
+              {syncRows.map((row) => (
+                <View key={row.id} style={styles.syncListItem}>
+                  <Text style={[styles.syncListItemText, isDark && styles.mutedOnDark]} numberOfLines={1}>{row.title}</Text>
+                  <View style={[styles.syncListBadge, { backgroundColor: row.status === "Synced" ? `${colors.success}20` : `${colors.warning}20` }]}>
+                    <MaterialCommunityIcons name={row.status === "Synced" ? "check" : "alert"} size={14} color={row.status === "Synced" ? colors.success : colors.warning} />
+                    <Text style={[styles.syncListBadgeText, { color: row.status === "Synced" ? colors.success : colors.warning }]}>{row.status}</Text>
+                  </View>
                 </View>
               ))}
             </View>
-          </Card.Content>
-        </Card>
+          </Animatable.View>
+        )}
       </ScrollView>
     </View>
   );
@@ -2045,10 +2137,10 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     return () => backSubscription.remove();
   }, [settingsPage]);
   const items = [
-    ["palette-outline", "Theme", "Light, dark, and Material color options.", () => setSettingsPage("theme")],
-    ["tune-vertical", "Advanced", "Debug controls and native alarm notes.", () => setSettingsPage("advanced")],
-    ["message-outline", "Notification", "Notification permissions, alert sound, and system settings.", () => setSettingsPage("notification")],
-    ["restart", "Reset Reminders", "Clear all reminders on this device.", onReset]
+    { icon: "palette-outline", color: colors.primary, title: "Theme", copy: "Light, dark, and Material color options.", action: () => setSettingsPage("theme") },
+    { icon: "tune-vertical", color: colors.secondary || colors.primary, title: "Advanced", copy: "Debug controls and native alarm notes.", action: () => setSettingsPage("advanced") },
+    { icon: "bell-outline", color: colors.warning || "#FF9500", title: "Notification", copy: "Permissions, alert sound, and system settings.", action: () => setSettingsPage("notification") },
+    { icon: "restart", color: colors.error, title: "Reset Reminders", copy: "Clear all reminders on this device.", action: onReset, destructive: true }
   ];
 
   if (settingsPage === "theme") {
@@ -2241,27 +2333,40 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Settings</ScreenTitle>
       <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
-        <View style={[
-          styles.settingsList, 
-          { 
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          }, 
-          isDark && styles.materialCardDark
-        ]}>
-          {items.map(([icon, title, copy, action]) => (
-            <View key={title}>
-              <Pressable android_ripple={{ color: colors.surfaceVariant }} style={styles.settingsRow} onPress={action}>
-                <MaterialCommunityIcons name={icon} size={24} color={colors.onSurfaceVariant} />
+        <View style={styles.settingsCardList}>
+          {items.map((item, index) => (
+            <Animatable.View
+              key={item.title}
+              animation="fadeInUp"
+              delay={index * 70}
+              duration={420}
+              useNativeDriver
+            >
+              <Pressable
+                android_ripple={{ color: `${item.color}22` }}
+                style={[
+                  styles.settingsRowCard,
+                  { backgroundColor: colors.surface, borderColor: colors.outline },
+                  isDark && styles.cardOnDark
+                ]}
+                onPress={item.action}
+                accessibilityRole="button"
+                accessibilityLabel={item.title}
+              >
+                <View style={[styles.settingsRowIcon, { backgroundColor: `${item.color}1F` }]}>
+                  <MaterialCommunityIcons name={item.icon} size={22} color={item.color} />
+                </View>
                 <View style={styles.settingsCopy}>
-                  <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>{title}</Text>
-                  <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{copy}</Text>
+                  <Text style={[
+                    styles.settingsRowTitle,
+                    isDark && styles.textOnDark,
+                    item.destructive && { color: item.color }
+                  ]}>{item.title}</Text>
+                  <Text style={[styles.settingsRowSubtitle, isDark && styles.mutedOnDark]}>{item.copy}</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
               </Pressable>
-              <Divider style={styles.settingsDivider} />
-            </View>
+            </Animatable.View>
           ))}
         </View>
       </ScrollView>
@@ -2364,222 +2469,232 @@ function DeviceTab({ batteryInfo, networkState, currentLocation, biometricAvaila
     }
   };
 
+  const deviceCards = [
+    {
+      icon: "battery-charging",
+      iconColor: batteryInfo?.isCharging ? "#34C759" : batteryInfo?.isLow ? "#FF3B30" : "#007AFF",
+      title: "Battery",
+      value: batteryInfo && batteryInfo.level != null ? `${Math.round(batteryInfo.level)}%` : "Unknown",
+      subtitle: batteryInfo?.isCharging ? "Charging" : "Not charging",
+      action: onRefreshBattery,
+      actionIcon: "refresh",
+      actionLabel: "Refresh"
+    },
+    {
+      icon: networkState?.isConnected ? "wifi" : "wifi-off",
+      iconColor: networkState?.isConnected ? "#34C759" : "#FF3B30",
+      title: "Network",
+      value: networkState?.isConnected ? "Connected" : "Offline",
+      subtitle: networkTypeLabel,
+      action: onRefreshNetwork,
+      actionIcon: "refresh",
+      actionLabel: "Refresh"
+    },
+    {
+      icon: "map-marker",
+      iconColor: currentLocation ? "#34C759" : "#86868B",
+      title: "Location",
+      value: currentLocation ? `${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}` : "Not available",
+      subtitle: "GPS coordinates",
+      hasMap: true,
+      showMap,
+      onToggleMap: () => setShowMap(!showMap),
+      action: onRefreshLocation,
+      actionIcon: "crosshairs-gps",
+      actionLabel: "Refresh"
+    },
+    {
+      icon: biometricAvailable ? "fingerprint" : "fingerprint-off",
+      iconColor: biometricAvailable ? "#34C759" : "#86868B",
+      title: "Biometrics",
+      value: biometricAvailable ? "Available" : "Not available",
+      subtitle: "Fingerprint or Face ID",
+      action: biometricAvailable ? handleBiometricAuth : null,
+      actionIcon: "fingerprint",
+      actionLabel: "Test"
+    },
+    {
+      icon: torchAvailable ? "flashlight" : "flashlight-off",
+      iconColor: torchOn ? "#FF9500" : torchAvailable ? "#34C759" : "#86868B",
+      title: "Torch",
+      value: torchAvailable ? "Available" : "Not available",
+      subtitle: torchOn ? "On" : "Off",
+      action: torchAvailable ? handleTorchToggle : null,
+      actionIcon: torchOn ? "flashlight-off" : "flashlight",
+      actionLabel: torchOn ? "Turn Off" : "Turn On"
+    }
+  ];
+
+  const batteryLevel = batteryInfo && batteryInfo.level != null ? Math.round(batteryInfo.level) : null;
+  const platformLabel = Platform.OS === "ios" ? "iOS Device" : Platform.OS === "android" ? "Android Device" : "Web Device";
+  const networkIcon = networkState?.isConnected ? "wifi" : "wifi-off";
+  const networkColor = networkState?.isConnected ? (colors.success || "#34C759") : (colors.error || "#FF3B30");
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
-      <ScreenTitle isDark={isDark}>Device Features</ScreenTitle>
-      <ScrollView contentContainerStyle={[styles.settingsContent, isSmallScreen && styles.settingsContentCompact]} showsVerticalScrollIndicator={false}>
-        <View style={[
-          styles.settingsPanel,
-          {
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          },
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Battery</Text>
-          <View style={styles.deviceInfoRow}>
-            <MaterialCommunityIcons name="battery-charging" size={24} color={colors.primary} />
-            <View style={styles.deviceInfoText}>
-              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
-                {batteryInfo && batteryInfo.level != null ? `${Math.round(batteryInfo.level)}%` : "Unknown"}
-              </Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                {batteryInfo?.isCharging ? "Charging" : "Not charging"}
-                {batteryInfo?.isLow ? " - Low battery" : ""}
-              </Text>
+      <ScreenTitle isDark={isDark}>Device</ScreenTitle>
+      <ScrollView contentContainerStyle={[styles.deviceContent, isSmallScreen && styles.deviceContentCompact]} showsVerticalScrollIndicator={false}>
+        <Animatable.View animation="fadeInDown" duration={500} useNativeDriver>
+          <View style={[
+            styles.deviceHeroCard,
+            { backgroundColor: colors.surface, borderColor: colors.outline },
+            isDark && styles.cardOnDark
+          ]}>
+            <View style={[styles.deviceHeroAccent, { backgroundColor: colors.primary }]} />
+            <View style={styles.deviceHeroRow}>
+              <View style={styles.deviceHeroCopy}>
+                <Text style={[styles.deviceHeroEyebrow, { color: colors.primary }]}>Live device telemetry</Text>
+                <Text style={[styles.deviceHeroTitle, isDark && styles.textOnDark]}>{platformLabel}</Text>
+                <View style={styles.deviceHeroChipsRow}>
+                  <View style={[styles.deviceHeroChip, { backgroundColor: `${networkColor}1F` }]}>
+                    <MaterialCommunityIcons name={networkIcon} size={12} color={networkColor} />
+                    <Text style={[styles.deviceHeroChipText, { color: networkColor }]}>{networkTypeLabel}</Text>
+                  </View>
+                  <View style={[styles.deviceHeroChip, { backgroundColor: currentLocation ? `${colors.success}1F` : `${colors.onSurfaceVariant}1F` }]}>
+                    <MaterialCommunityIcons name="map-marker" size={12} color={currentLocation ? colors.success : colors.onSurfaceVariant} />
+                    <Text style={[styles.deviceHeroChipText, { color: currentLocation ? colors.success : colors.onSurfaceVariant }]}>
+                      {currentLocation ? "Located" : "No GPS"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <Animatable.View animation="zoomIn" duration={500} useNativeDriver style={[styles.deviceHeroRing, { borderColor: batteryLevel != null && batteryLevel <= 20 ? colors.error : colors.primary, backgroundColor: `${colors.primary}10` }]}>
+                <MaterialCommunityIcons
+                  name={batteryInfo?.isCharging ? "battery-charging" : "battery"}
+                  size={18}
+                  color={batteryLevel != null && batteryLevel <= 20 ? colors.error : colors.primary}
+                />
+                <Text style={[styles.deviceHeroRingValue, { color: batteryLevel != null && batteryLevel <= 20 ? colors.error : colors.primary }]}>
+                  {batteryLevel != null ? `${batteryLevel}%` : "--"}
+                </Text>
+              </Animatable.View>
             </View>
           </View>
-          {onRefreshBattery ? (
-            <Button mode="outlined" onPress={onRefreshBattery} style={styles.deviceButton} icon="refresh">Refresh</Button>
-          ) : null}
+        </Animatable.View>
+
+        <View style={styles.deviceRowsList}>
+          {deviceCards.map((card, index) => {
+            const isLocation = card.hasMap;
+            const mapExpanded = isLocation && showMap && currentLocation;
+            return (
+              <Animatable.View
+                key={card.title}
+                animation="fadeInUp"
+                delay={120 + index * 80}
+                duration={420}
+                useNativeDriver
+              >
+                <View style={[
+                  styles.deviceRowCard,
+                  { backgroundColor: colors.surface, borderColor: colors.outline },
+                  isDark && styles.cardOnDark
+                ]}>
+                  <View style={[styles.deviceRowAccent, { backgroundColor: card.iconColor }]} />
+                  <View style={styles.deviceRowMain}>
+                    <View style={[styles.deviceRowIcon, { backgroundColor: `${card.iconColor}1F` }]}>
+                      <MaterialCommunityIcons name={card.icon} size={22} color={card.iconColor} />
+                    </View>
+                    <View style={styles.deviceRowCopy}>
+                      <Text style={[styles.deviceRowTitle, isDark && styles.textOnDark]}>{card.title}</Text>
+                      <Text style={[styles.deviceRowValue, { color: card.iconColor }]} numberOfLines={1}>{card.value}</Text>
+                      <Text style={[styles.deviceRowSubtitle, isDark && styles.mutedOnDark]} numberOfLines={1}>{card.subtitle}</Text>
+                    </View>
+                    <View style={styles.deviceRowActions}>
+                      {isLocation && currentLocation ? (
+                        <Pressable
+                          onPress={card.onToggleMap}
+                          style={[styles.deviceIconButton, { backgroundColor: `${card.iconColor}1A`, borderColor: `${card.iconColor}40` }]}
+                          accessibilityRole="button"
+                          accessibilityLabel={mapExpanded ? "Hide map" : "Show map"}
+                        >
+                          <MaterialCommunityIcons name={mapExpanded ? "chevron-up" : "map"} size={18} color={card.iconColor} />
+                        </Pressable>
+                      ) : null}
+                      {card.action ? (
+                        <Pressable
+                          onPress={card.action}
+                          style={[styles.deviceIconButton, { backgroundColor: `${card.iconColor}1A`, borderColor: `${card.iconColor}40` }]}
+                          accessibilityRole="button"
+                          accessibilityLabel={card.actionLabel}
+                        >
+                          <MaterialCommunityIcons name={card.actionIcon} size={18} color={card.iconColor} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
+                  {mapExpanded ? (
+                    <Animatable.View animation="fadeIn" duration={300} useNativeDriver style={styles.deviceMapContainer}>
+                      <LocationMap location={currentLocation} reminders={reminders} style={styles.deviceMap} />
+                    </Animatable.View>
+                  ) : null}
+                </View>
+              </Animatable.View>
+            );
+          })}
         </View>
 
-        <View style={[
-          styles.settingsPanel,
-          {
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          },
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Network</Text>
-          <View style={styles.deviceInfoRow}>
-            <MaterialCommunityIcons name={networkState?.isConnected ? "wifi" : "wifi-off"} size={24} color={colors.primary} />
-            <View style={styles.deviceInfoText}>
-              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
-                {networkState?.isConnected ? "Connected" : "Offline"}
-              </Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                {networkTypeLabel}
-              </Text>
+        <Animatable.View animation="fadeInUp" delay={500} duration={420} useNativeDriver>
+          <View style={[
+            styles.sensorCard,
+            { backgroundColor: colors.surface, borderColor: colors.outline },
+            isDark && styles.cardOnDark
+          ]}>
+            <View style={styles.sensorCardHeader}>
+              <View style={[styles.deviceRowIcon, { backgroundColor: `${colors.primary}1F` }]}>
+                <MaterialCommunityIcons name="motion-sensor" size={22} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.deviceRowTitle, isDark && styles.textOnDark]}>Sensors</Text>
+                <Text style={[styles.deviceRowSubtitle, isDark && styles.mutedOnDark]}>Live motion samples</Text>
+              </View>
             </View>
-          </View>
-          {onRefreshNetwork ? (
-            <Button mode="outlined" onPress={onRefreshNetwork} style={styles.deviceButton} icon="refresh">Refresh</Button>
-          ) : null}
-        </View>
 
-        <View style={[
-          styles.settingsPanel,
-          {
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          },
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Location</Text>
-          <View style={styles.deviceInfoRow}>
-            <MaterialCommunityIcons name="map-marker" size={24} color={colors.primary} />
-            <View style={styles.deviceInfoText}>
-              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
-                {currentLocation ? `${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}` : "Not available"}
-              </Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                GPS coordinates
-              </Text>
-            </View>
+            {[
+              { key: "accel", icon: "rotate-3d", label: "Accelerometer", data: accelData, action: readAccelerometer },
+              { key: "gyro", icon: "compass-outline", label: "Gyroscope", data: gyroData, action: readGyroscope }
+            ].map((sensor, idx) => (
+              <View key={sensor.key} style={[styles.sensorItem, idx > 0 && { marginTop: 10 }, { backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" }]}>
+                <View style={styles.sensorItemHeader}>
+                  <MaterialCommunityIcons name={sensor.icon} size={18} color={colors.primary} />
+                  <Text style={[styles.sensorItemLabel, isDark && styles.textOnDark]}>{sensor.label}</Text>
+                  <Pressable
+                    onPress={sensor.action}
+                    disabled={readingSensor}
+                    style={[
+                      styles.sensorReadBtn,
+                      { backgroundColor: `${colors.primary}1F`, borderColor: `${colors.primary}40`, opacity: readingSensor ? 0.5 : 1 }
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Read ${sensor.label}`}
+                  >
+                    <MaterialCommunityIcons name="play" size={14} color={colors.primary} />
+                    <Text style={[styles.sensorReadBtnText, { color: colors.primary }]}>Read</Text>
+                  </Pressable>
+                </View>
+                <Text style={[styles.sensorAxisText, isDark && styles.mutedOnDark]}>{formatAxis(sensor.data)}</Text>
+              </View>
+            ))}
           </View>
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            {onRefreshLocation ? (
-              <Button mode="outlined" onPress={onRefreshLocation} style={[styles.mapButton, { flex: 1, minWidth: 120 }]} icon="crosshairs-gps">Refresh</Button>
-            ) : null}
-            <Button
-              mode="outlined"
-              onPress={() => setShowMap(!showMap)}
-              style={[styles.mapButton, { flex: 1, minWidth: 120 }]}
-              icon="map"
-            >
-              {showMap ? "Hide Map" : "Show Map"}
-            </Button>
-          </View>
-          {showMap && currentLocation && (
-            <View style={styles.mapContainer}>
-              <LocationMap
-                location={currentLocation}
-                reminders={reminders}
-                style={styles.map}
-              />
-            </View>
-          )}
-        </View>
+        </Animatable.View>
 
-        <View style={[
-          styles.settingsPanel,
-          {
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          },
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Biometrics</Text>
-          <View style={styles.deviceInfoRow}>
-            <MaterialCommunityIcons name={biometricAvailable ? "fingerprint" : "fingerprint-off"} size={24} color={colors.primary} />
-            <View style={styles.deviceInfoText}>
-              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
-                {biometricAvailable ? "Available" : "Not available"}
-              </Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                Fingerprint or Face ID
-              </Text>
+        <Animatable.View animation="fadeInUp" delay={600} duration={420} useNativeDriver>
+          <View style={[
+            styles.securityBanner,
+            { backgroundColor: colors.surface, borderColor: colors.outline },
+            isDark && styles.cardOnDark
+          ]}>
+            <View style={[styles.securityBannerIcon, { backgroundColor: `${colors.success}1F` }]}>
+              <MaterialCommunityIcons name="shield-check" size={22} color={colors.success} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.deviceRowTitle, isDark && styles.textOnDark]}>Security</Text>
+              <Text style={[styles.deviceRowSubtitle, isDark && styles.mutedOnDark]}>AES encryption enabled for sensitive data</Text>
+            </View>
+            <View style={[styles.securityPill, { backgroundColor: `${colors.success}1F` }]}>
+              <Text style={[styles.securityPillText, { color: colors.success }]}>Protected</Text>
             </View>
           </View>
-          {biometricAvailable && (
-            <Button
-              mode="outlined"
-              onPress={handleBiometricAuth}
-              style={styles.deviceButton}
-              icon="fingerprint"
-            >
-              Test Biometric
-            </Button>
-          )}
-        </View>
-
-        <View style={[
-          styles.settingsPanel,
-          {
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          },
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Torch</Text>
-          <View style={styles.deviceInfoRow}>
-            <MaterialCommunityIcons name={torchAvailable ? "flashlight" : "flashlight-off"} size={24} color={colors.primary} />
-            <View style={styles.deviceInfoText}>
-              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>
-                {torchAvailable ? "Available" : "Not available"}
-              </Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                {torchOn ? "On" : "Off"}
-              </Text>
-            </View>
-          </View>
-          {torchAvailable && (
-            <Button
-              mode="outlined"
-              onPress={handleTorchToggle}
-              style={styles.deviceButton}
-              icon={torchOn ? "flashlight-off" : "flashlight"}
-            >
-              {torchOn ? "Turn Off" : "Turn On"}
-            </Button>
-          )}
-        </View>
-
-        <View style={[
-          styles.settingsPanel,
-          {
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          },
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Sensors</Text>
-          <View style={styles.deviceInfoRow}>
-            <MaterialCommunityIcons name="motion-sensor" size={24} color={colors.primary} />
-            <View style={styles.deviceInfoText}>
-              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Accelerometer</Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{formatAxis(accelData)}</Text>
-            </View>
-          </View>
-          <Button mode="outlined" onPress={readAccelerometer} loading={readingSensor} disabled={readingSensor} style={styles.deviceButton} icon="play">Read accelerometer</Button>
-          <View style={[styles.deviceInfoRow, { marginTop: 8 }]}>
-            <MaterialCommunityIcons name="rotate-3d" size={24} color={colors.primary} />
-            <View style={styles.deviceInfoText}>
-              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Gyroscope</Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{formatAxis(gyroData)}</Text>
-            </View>
-          </View>
-          <Button mode="outlined" onPress={readGyroscope} loading={readingSensor} disabled={readingSensor} style={styles.deviceButton} icon="play">Read gyroscope</Button>
-        </View>
-
-        <View style={[
-          styles.settingsPanel,
-          {
-            backgroundColor: colors.surface,
-            boxShadow: isDark ? "0px 1px 4px rgba(0,0,0,0.4)" : "0px 1px 4px rgba(0,0,0,0.05)",
-            elevation: 2
-          },
-          isDark && styles.materialCardDark
-        ]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Security</Text>
-          <View style={styles.deviceInfoRow}>
-            <MaterialCommunityIcons name="lock" size={24} color={colors.primary} />
-            <View style={styles.deviceInfoText}>
-              <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Data Encryption</Text>
-              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
-                AES encryption enabled for sensitive data
-              </Text>
-            </View>
-          </View>
-        </View>
+        </Animatable.View>
       </ScrollView>
     </View>
   );
@@ -2591,8 +2706,9 @@ function BottomNav({ active, isDark, palette, onChange }) {
     ["home", "bell-ring", "Reminders"],
     ["schedule", "calendar-clock", "Schedule"],
     ["stats", "chart-box", "Stats"],
+    ["device", "devices", "Device"],
     ["account", "account-circle", "Account"],
-    ["device", "devices", "Device"]
+    ["settings", "cog", "Settings"]
   ];
 
   return (
@@ -3217,11 +3333,16 @@ const styles = StyleSheet.create({
   materialCard: {
     backgroundColor: SURFACE,
     borderColor: LINE,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 14,
     overflow: "hidden",
-    padding: 14
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3
   },
   materialCardDark: {
     backgroundColor: "#211F26",
@@ -3292,6 +3413,361 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4
   },
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 8,
+    padding: 4
+  },
+  modernStatsCard: {
+    width: "48%",
+    minWidth: 140,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+    paddingTop: 14,
+    marginBottom: 6,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    overflow: "hidden",
+    position: "relative"
+  },
+  modernStatsCardCompact: {
+    width: "100%",
+    minWidth: 0,
+    padding: 10,
+    paddingTop: 12
+  },
+  modernStatsCardLarge: {
+    width: "31.5%",
+    minWidth: 160
+  },
+  statsCardTopAccent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    opacity: 0.85
+  },
+  homeHeaderWrap: {
+    paddingTop: 4,
+    paddingBottom: 4
+  },
+  heroBanner: {
+    borderRadius: 24,
+    borderWidth: 1,
+    marginHorizontal: 16,
+    marginBottom: 14,
+    padding: 18,
+    paddingLeft: 22,
+    overflow: "hidden",
+    position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 3
+  },
+  heroBannerAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4
+  },
+  heroBannerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12
+  },
+  heroBannerCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  heroBannerEyebrow: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 6
+  },
+  heroBannerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: TEXT,
+    marginBottom: 4,
+    letterSpacing: -0.2
+  },
+  heroBannerSubtitle: {
+    fontSize: 13,
+    color: MUTED
+  },
+  heroRing: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 4,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  heroRingInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  heroRingValue: {
+    fontSize: 18,
+    fontWeight: "800"
+  },
+  heroRingLabel: {
+    fontSize: 10,
+    color: MUTED,
+    marginTop: 1,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    textTransform: "uppercase"
+  },
+  heroProgressTrack: {
+    height: 8,
+    borderRadius: 6,
+    overflow: "hidden",
+    marginTop: 14
+  },
+  heroProgressFill: {
+    height: "100%",
+    borderRadius: 6
+  },
+  filterChipsRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8
+  },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1
+  },
+  filterChipCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    gap: 3,
+    borderRadius: 14
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: "600"
+  },
+  filterChipTextCompact: {
+    fontSize: 11,
+    fontWeight: "600"
+  },
+  filterChipCount: {
+    minWidth: 20,
+    paddingHorizontal: 5,
+    height: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  filterChipCountCompact: {
+    minWidth: 18,
+    paddingHorizontal: 4,
+    height: 14,
+    borderRadius: 7
+  },
+  filterChipCountText: {
+    fontSize: 11,
+    fontWeight: "700"
+  },
+  filterChipCountTextCompact: {
+    fontSize: 10,
+    fontWeight: "700"
+  },
+  statsHeroCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    marginHorizontal: 4,
+    marginBottom: 14,
+    padding: 18,
+    paddingLeft: 22,
+    overflow: "hidden",
+    position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4
+  },
+  statsHeroAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4
+  },
+  statsHeroRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12
+  },
+  statsHeroCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  statsHeroEyebrow: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginBottom: 6
+  },
+  statsHeroTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: TEXT,
+    marginBottom: 4,
+    letterSpacing: -0.3
+  },
+  statsHeroSubtitle: {
+    fontSize: 13,
+    color: MUTED
+  },
+  statsHeroRing: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 4,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  statsHeroRingValue: {
+    fontSize: 20,
+    fontWeight: "800"
+  },
+  statsHeroProgressTrack: {
+    height: 10,
+    borderRadius: 8,
+    overflow: "hidden",
+    marginTop: 16
+  },
+  statsHeroProgressFill: {
+    height: "100%",
+    borderRadius: 8
+  },
+  statsHeroMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+    marginTop: 14
+  },
+  statsHeroMetaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4
+  },
+  statsHeroMetaText: {
+    fontSize: 12,
+    color: MUTED,
+    fontWeight: "600"
+  },
+  settingsCardList: {
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 4
+  },
+  settingsRowCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2
+  },
+  settingsRowIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  settingsRowTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: TEXT,
+    marginBottom: 2
+  },
+  settingsRowSubtitle: {
+    fontSize: 13,
+    color: MUTED,
+    lineHeight: 18
+  },
+  statsCardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8
+  },
+  modernStatsTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 3,
+    color: TEXT
+  },
+  modernStatsValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 3
+  },
+  modernStatsSubtitle: {
+    fontSize: 11,
+    color: MUTED,
+    marginBottom: 6
+  },
+  statsDoubleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6
+  },
+  statsMiniBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6
+  },
+  statsMiniBadgeText: {
+    fontSize: 10,
+    fontWeight: "700"
+  },
+  modernProgressBar: {
+    borderRadius: 2,
+    height: 4,
+    overflow: "hidden",
+    marginTop: 6
+  },
+  modernProgressFill: {
+    borderRadius: 6,
+    height: "100%"
+  },
   scheduleRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -3358,6 +3834,186 @@ const styles = StyleSheet.create({
     minHeight: 64,
     paddingHorizontal: 12,
     paddingVertical: 10
+  },
+  modernTaskCard: {
+    borderRadius: 22,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    padding: 18,
+    paddingLeft: 22,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.09,
+    shadowRadius: 10,
+    overflow: "hidden",
+    position: "relative"
+  },
+  modernTaskCardCompact: {
+    marginHorizontal: 12,
+    marginVertical: 6,
+    padding: 14,
+    paddingLeft: 18,
+    borderRadius: 18
+  },
+  modernTaskAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderTopLeftRadius: 22,
+    borderBottomLeftRadius: 22
+  },
+  modernTaskHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    paddingRight: 56
+  },
+  modernTaskIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12
+  },
+  modernTaskTimeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.05)",
+    gap: 4,
+    marginRight: 8
+  },
+  modernTaskTimeText: {
+    fontSize: 12,
+    fontWeight: "600"
+  },
+  modernPriorityBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  modernTaskBody: {
+    marginBottom: 12
+  },
+  modernTaskTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 4,
+    color: TEXT
+  },
+  taskCompleted: {
+    textDecorationLine: "line-through",
+    opacity: 0.6
+  },
+  modernTaskDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: MUTED,
+    marginBottom: 8
+  },
+  modernTaskFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  modernTaskCountdown: {
+    fontSize: 12,
+    fontWeight: "500"
+  },
+  modernTaskActions: {
+    flexDirection: "row",
+    gap: 4
+  },
+  modernTaskToggle: {
+    position: "absolute",
+    top: 16,
+    right: 16
+  },
+  tableTaskRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3
+  },
+  tableTaskRowCompact: {
+    marginHorizontal: 12,
+    marginVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12
+  },
+  tableTaskLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 10,
+    minWidth: 0
+  },
+  tableTaskIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  tableTaskInfo: {
+    flex: 1,
+    minWidth: 0
+  },
+  tableTaskTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: TEXT,
+    marginBottom: 2
+  },
+  tableTaskMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap"
+  },
+  tableTaskTime: {
+    fontSize: 11,
+    fontWeight: "600"
+  },
+  tableMetaBadge: {
+    width: 14,
+    height: 14,
+    borderRadius: 5,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  tableTaskDesc: {
+    fontSize: 11,
+    color: MUTED,
+    flex: 1,
+    minWidth: 0
+  },
+  tableTaskRight: {
+    alignItems: "flex-end",
+    gap: 4,
+    marginLeft: 8
+  },
+  tableTaskCountdown: {
+    fontSize: 10,
+    fontWeight: "500"
   },
   visualBubble: {
     alignItems: "center",
@@ -3908,9 +4564,421 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingBottom: 96
   },
+  modernAccountCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    overflow: "hidden",
+    position: "relative"
+  },
+  accountTint: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 90,
+    opacity: 1
+  },
+  accountAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 16,
+    borderWidth: 2
+  },
+  accountInfo: {
+    flex: 1
+  },
+  accountName: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 4,
+    color: TEXT
+  },
+  accountEmail: {
+    fontSize: 14,
+    color: MUTED
+  },
+  accountStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4
+  },
+  accountStatusText: {
+    fontSize: 12,
+    fontWeight: "600"
+  },
+  modernAuthCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 20,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4
+  },
+  authHeader: {
+    alignItems: "center",
+    marginBottom: 20
+  },
+  authTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 12,
+    marginBottom: 4,
+    color: TEXT
+  },
+  authSubtitle: {
+    fontSize: 14,
+    textAlign: "center",
+    color: MUTED
+  },
   authInput: {
     borderRadius: 12,
+    marginBottom: 12
+  },
+  authActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8
+  },
+  authButton: {
+    flex: 1,
+    borderRadius: 12
+  },
+  syncStats: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginVertical: 16
+  },
+  syncStatItem: {
+    alignItems: "center"
+  },
+  syncStatValue: {
+    fontSize: 28,
+    fontWeight: "700"
+  },
+  syncStatLabel: {
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 4
+  },
+  syncProgressContainer: {
+    borderRadius: 8,
+    height: 8,
+    marginBottom: 16,
+    overflow: "hidden"
+  },
+  syncProgressBar: {
+    height: "100%",
+    borderRadius: 8
+  },
+  syncButton: {
+    borderRadius: 12,
+    marginBottom: 8
+  },
+  signOutButton: {
+    borderRadius: 12
+  },
+  modernSyncListCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4
+  },
+  syncListTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 12,
+    color: TEXT
+  },
+  syncListItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: LINE
+  },
+  syncListItemText: {
+    flex: 1,
+    fontSize: 14,
+    color: MUTED,
+    marginRight: 8
+  },
+  syncListBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4
+  },
+  syncListBadgeText: {
+    fontSize: 12,
+    fontWeight: "600"
+  },
+  deviceContent: {
+    padding: 16,
+    paddingBottom: 96
+  },
+  deviceContentCompact: {
+    padding: 12,
+    paddingBottom: 80
+  },
+  deviceHeroCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    marginHorizontal: 4,
+    marginBottom: 12,
+    padding: 14,
+    paddingLeft: 18,
+    overflow: "hidden",
+    position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3
+  },
+  deviceHeroAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3
+  },
+  deviceHeroRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10
+  },
+  deviceHeroCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  deviceHeroEyebrow: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 4
+  },
+  deviceHeroTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: TEXT,
+    marginBottom: 8,
+    letterSpacing: -0.2
+  },
+  deviceHeroChipsRow: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap"
+  },
+  deviceHeroChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10
+  },
+  deviceHeroChipText: {
+    fontSize: 10,
+    fontWeight: "600"
+  },
+  deviceHeroRing: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2.5,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  deviceHeroRingValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    marginTop: 1
+  },
+  deviceRowsList: {
+    gap: 8,
+    marginBottom: 12
+  },
+  deviceRowCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1
+  },
+  deviceRowAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 2.5
+  },
+  deviceRowMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    paddingLeft: 14,
+    gap: 8
+  },
+  deviceRowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  deviceRowCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  deviceRowTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: TEXT,
+    marginBottom: 1
+  },
+  deviceRowValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 1
+  },
+  deviceRowSubtitle: {
+    fontSize: 10,
+    color: MUTED
+  },
+  deviceRowActions: {
+    flexDirection: "row",
+    gap: 4
+  },
+  deviceIconButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1
+  },
+  deviceMapContainer: {
+    width: "100%",
+    height: 120,
+    overflow: "hidden"
+  },
+  deviceMap: {
+    width: "100%",
+    height: "100%"
+  },
+  sensorCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1
+  },
+  sensorCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginBottom: 10
+  },
+  sensorItem: {
+    borderRadius: 10,
+    padding: 8
+  },
+  sensorItemHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 4
+  },
+  sensorItemLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: TEXT,
+    flex: 1
+  },
+  sensorReadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1
+  },
+  sensorReadBtnText: {
+    fontSize: 10,
+    fontWeight: "600"
+  },
+  sensorAxisText: {
+    fontSize: 10,
+    color: MUTED,
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    paddingLeft: 24
+  },
+  securityBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1
+  },
+  securityBannerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  securityPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8
+  },
+  securityPillText: {
+    fontSize: 10,
+    fontWeight: "700"
   },
   progressTrack: {
     borderRadius: 6,
