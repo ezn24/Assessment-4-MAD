@@ -980,7 +980,6 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                 isDark && styles.cardOnDark
               ]}
               onPress={() => onEdit(reminder)}
-              accessibilityRole="button"
               accessibilityLabel={`Edit reminder: ${reminder.title}`}
             >
               <View style={styles.tableTaskLeft}>
@@ -1027,6 +1026,14 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                 <Text style={[styles.tableTaskCountdown, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
                   {getCountdownLabel(reminder.scheduledAt)}
                 </Text>
+                <View style={styles.tableTaskActions}>
+                  <Pressable onPress={() => onEdit(reminder)} style={styles.tableActionIcon} accessibilityLabel="Edit reminder">
+                    <MaterialCommunityIcons name="pencil" size={16} color={colors.onSurfaceVariant} />
+                  </Pressable>
+                  <Pressable onPress={() => handleDelete(reminder)} style={styles.tableActionIcon} accessibilityLabel="Delete reminder">
+                    <MaterialCommunityIcons name="trash-can" size={16} color={deletingId === reminder.id ? colors.onSurfaceDisabled : (colors.error || "#FF3B30")} />
+                  </Pressable>
+                </View>
                 <Switch 
                   value={!reminder.completed} 
                   color={colors.primary} 
@@ -1062,7 +1069,6 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
         style={[styles.fab, { backgroundColor: primary }]}
         onPress={onAdd}
         accessibilityLabel="Add new reminder"
-        accessibilityRole="button"
       />
     </View>
   );
@@ -1964,7 +1970,7 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
             },
             isDark && styles.cardOnDark
           ]}>
-            <View pointerEvents="none" style={[styles.accountTint, { backgroundColor: `${colors.primary}12` }]} />
+            <View style={[styles.accountTint, { backgroundColor: `${colors.primary}12`, pointerEvents: "none" }]} />
             <Animatable.View animation="zoomIn" duration={500} useNativeDriver style={[styles.accountAvatar, { backgroundColor: `${colors.primary}25`, borderColor: `${colors.primary}40` }]}>
               <MaterialCommunityIcons name="account-circle" size={isSmallScreen ? 44 : 52} color={colors.primary} />
             </Animatable.View>
@@ -4014,6 +4020,18 @@ const styles = StyleSheet.create({
   tableTaskCountdown: {
     fontSize: 10,
     fontWeight: "500"
+  },
+  tableTaskActions: {
+    flexDirection: "row",
+    gap: 4
+  },
+  tableActionIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.03)"
   },
   visualBubble: {
     alignItems: "center",
