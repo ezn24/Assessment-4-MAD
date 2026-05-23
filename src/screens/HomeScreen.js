@@ -186,9 +186,9 @@ function createDraftReminder() {
     title: "",
     description: "",
     visualCue: "Photo or icon cue",
-    visualType: "icon",
-    icon: "bell-outline",
-    emoji: "\u{1F514}",
+    visualType: "image",
+    icon: null,
+    emoji: null,
     scheduledAt: now,
     createdAt: now,
     timeSet: true,
@@ -984,41 +984,52 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
             >
               <View style={styles.tableTaskLeft}>
                 <View style={[styles.tableTaskIcon, { backgroundColor: `${colors.primary}15` }]}>
-                  <VisualCue reminder={reminder} size={28} iconSize={14} compact palette={colors} />
+                  <VisualCue reminder={reminder} size={36} iconSize={18} compact palette={colors} />
                 </View>
                 <View style={styles.tableTaskInfo}>
-                  <Text style={[styles.tableTaskTitle, isDark && styles.textOnDark, reminder.completed && styles.taskCompleted]} numberOfLines={1}>
+                  <Text style={[styles.tableTaskTitle, isDark && styles.textOnDark, reminder.completed && styles.taskCompleted]} numberOfLines={2}>
                     {reminder.title}
                   </Text>
+                  {reminder.description ? (
+                    <Text style={[styles.tableTaskDesc, isDark && styles.mutedOnDark]} numberOfLines={2}>
+                      {reminder.description}
+                    </Text>
+                  ) : null}
                   <View style={styles.tableTaskMeta}>
                     <Text style={[styles.tableTaskTime, { color: colors.primary }]}>
-                      {format(parseISO(reminder.scheduledAt), "h:mm a")}
+                      {reminder.hasDate ? format(parseISO(reminder.scheduledAt), "MMM dd, yyyy • h:mm a") : format(parseISO(reminder.scheduledAt), "h:mm a")}
                     </Text>
+                    {reminder.hasDate && (
+                      <Text style={[styles.tableTaskDate, isDark && styles.mutedOnDark]}>
+                        {format(parseISO(reminder.scheduledAt), "EEEE")}
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.tableTaskBadges}>
                     {reminder.priority === "high" && (
-                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.error}1F` }]}>
-                        <MaterialCommunityIcons name="flag" size={9} color={colors.error} />
+                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.error}15`, borderColor: colors.error }]}>
+                        <MaterialCommunityIcons name="flag" size={10} color={colors.error} />
+                        <Text style={[styles.tableMetaBadgeText, { color: colors.error }]}>High</Text>
                       </View>
                     )}
                     {reminder.repeat && (
-                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.secondary || colors.primary}1F` }]}>
-                        <MaterialCommunityIcons name="repeat" size={9} color={colors.secondary || colors.primary} />
-                      </View>
-                    )}
-                    {reminder.hasDate && reminder.locationLabel && (
-                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.tertiary || colors.primary}1F` }]}>
-                        <MaterialCommunityIcons name="map-marker" size={9} color={colors.tertiary || colors.primary} />
+                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.secondary || colors.primary}15`, borderColor: colors.secondary || colors.primary }]}>
+                        <MaterialCommunityIcons name="repeat" size={10} color={colors.secondary || colors.primary} />
+                        <Text style={[styles.tableMetaBadgeText, { color: colors.secondary || colors.primary }]}>Repeat</Text>
                       </View>
                     )}
                     {reminder.followUpEnabled && (
-                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.primary}1F` }]}>
-                        <MaterialCommunityIcons name="bell-ring" size={9} color={colors.primary} />
+                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.primary}15`, borderColor: colors.primary }]}>
+                        <MaterialCommunityIcons name="bell-ring" size={10} color={colors.primary} />
+                        <Text style={[styles.tableMetaBadgeText, { color: colors.primary }]}>Follow-up</Text>
                       </View>
                     )}
-                    {reminder.description ? (
-                      <Text style={[styles.tableTaskDesc, isDark && styles.mutedOnDark]} numberOfLines={1}>
-                        {reminder.description}
-                      </Text>
-                    ) : null}
+                    {reminder.important && (
+                      <View style={[styles.tableMetaBadge, { backgroundColor: `${colors.tertiary || colors.primary}15`, borderColor: colors.tertiary || colors.primary }]}>
+                        <MaterialCommunityIcons name="star" size={10} color={colors.tertiary || colors.primary} />
+                        <Text style={[styles.tableMetaBadgeText, { color: colors.tertiary || colors.primary }]}>Important</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               </View>
@@ -1027,6 +1038,17 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                   {getCountdownLabel(reminder.scheduledAt)}
                 </Text>
                 <View style={styles.tableTaskActions}>
+                  <Pressable 
+                    onPress={() => onToggle(reminder, !reminder.completed)} 
+                    style={[styles.tableCompleteButton, { backgroundColor: reminder.completed ? colors.success : `${colors.primary}15` }]}
+                    accessibilityLabel={reminder.completed ? "Mark as incomplete" : "Mark as complete"}
+                  >
+                    <MaterialCommunityIcons 
+                      name={reminder.completed ? "check-circle" : "checkbox-blank-circle-outline"} 
+                      size={20} 
+                      color={reminder.completed ? "#FFFFFF" : colors.primary} 
+                    />
+                  </Pressable>
                   <Pressable onPress={() => onEdit(reminder)} style={styles.tableActionIcon} accessibilityLabel="Edit reminder">
                     <MaterialCommunityIcons name="pencil" size={16} color={colors.onSurfaceVariant} />
                   </Pressable>
@@ -1034,13 +1056,6 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                     <MaterialCommunityIcons name="trash-can" size={16} color={deletingId === reminder.id ? colors.onSurfaceDisabled : (colors.error || "#FF3B30")} />
                   </Pressable>
                 </View>
-                <Switch 
-                  value={!reminder.completed} 
-                  color={colors.primary} 
-                  onValueChange={(value) => onToggle(reminder, !value)}
-                  accessibilityLabel={reminder.completed ? "Mark as incomplete" : "Mark as complete"}
-                  accessibilityRole="switch"
-                />
               </View>
             </Pressable>
           </Animatable.View>
@@ -1391,15 +1406,23 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
   return (
     <Animatable.View animation="fadeInUp" duration={300} style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle isDark={isDark}>{mode === "add" ? "New Reminder" : "Edit Reminder"}</ScreenTitle>
-      <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <View style={styles.imageEditWrap}>
-          <VisualCue reminder={reminder} size={112} iconSize={52} palette={colors} />
-          <Pressable style={[styles.editFab, { backgroundColor: colors.primary }]} onPress={onAttachImage}>
-            <MaterialCommunityIcons name="pencil" size={18} color="#FFFFFF" />
-          </Pressable>
-        </View>
+      <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="always" showsVerticalScrollIndicator={false}>
+        {reminder.imageUri ? (
+          <View style={styles.imageEditWrap}>
+            <VisualCue reminder={reminder} size={112} iconSize={52} palette={colors} />
+            <Pressable style={[styles.editFab, { backgroundColor: colors.primary }]} onPress={onAttachImage}>
+              <MaterialCommunityIcons name="pencil" size={18} color="#FFFFFF" />
+            </Pressable>
+          </View>
+        ) : null}
 
-        <VisualSourcePicker reminder={reminder} isDark={isDark} palette={colors} onUpdate={onUpdate} onAttachImage={onAttachImage} />
+        <Pressable 
+          style={[styles.attachImageButton, { backgroundColor: colors.surfaceVariant, borderColor: colors.outline }]} 
+          onPress={onAttachImage}
+        >
+          <MaterialCommunityIcons name="image-plus" size={32} color={colors.primary} />
+          <Text style={[styles.attachImageText, { color: colors.onSurface }]}>Add Photo (Optional)</Text>
+        </Pressable>
 
         <EditTextField isDark={isDark} palette={colors} label="Title" value={reminder.title} onChangeText={(title) => onUpdate({ title })} />
         <EditTextField
@@ -1420,6 +1443,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
                 console.log("Date button pressed");
                 openDatePicker();
               }}
+              android_ripple={{ color: colors.primary + '20', borderless: false }}
             >
               <MaterialCommunityIcons name="calendar-range" size={20} color={colors.primary} />
               <Text style={[styles.dateTimeButtonText, { color: colors.onSurface }]}>
@@ -1432,6 +1456,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
                 console.log("Time button pressed");
                 openTimePicker();
               }}
+              android_ripple={{ color: colors.primary + '20', borderless: false }}
             >
               <MaterialCommunityIcons name="clock-outline" size={20} color={colors.primary} />
               <Text style={[styles.dateTimeButtonText, { color: colors.onSurface }]}>
@@ -1805,44 +1830,43 @@ function StatsTab({ reminders, completedCount, isDark, palette, isSmallScreen, i
         <Animatable.View animation="fadeInDown" duration={500} useNativeDriver>
           <View style={[
             styles.statsHeroCard,
-            { backgroundColor: colors.surface, borderColor: colors.outline },
+            { backgroundColor: colors.primary, borderColor: colors.primary },
             isDark && styles.cardOnDark
           ]}>
-            <View style={[styles.statsHeroAccent, { backgroundColor: colors.primary }]} />
             <View style={styles.statsHeroRow}>
               <View style={styles.statsHeroCopy}>
-                <Text style={[styles.statsHeroEyebrow, { color: colors.primary }]}>Overall progress</Text>
-                <Text style={[styles.statsHeroTitle, isDark && styles.textOnDark]}>
-                  {completionRate === 100 && totalReminders > 0 ? "Perfect day" : completionRate >= 75 ? "Great pace" : completionRate >= 40 ? "Keep going" : "Let's get started"}
+                <Text style={[styles.statsHeroEyebrow, { color: colors.onPrimary }]}>Your Progress</Text>
+                <Text style={[styles.statsHeroTitle, { color: colors.onPrimary }]}>
+                  {completionRate === 100 && totalReminders > 0 ? "Perfect Day! 🎉" : completionRate >= 75 ? "Great Pace! 💪" : completionRate >= 40 ? "Keep Going! 🚀" : "Let's Start! 🌟"}
                 </Text>
-                <Text style={[styles.statsHeroSubtitle, isDark && styles.mutedOnDark]}>
+                <Text style={[styles.statsHeroSubtitle, { color: colors.onPrimaryVariant }]}>
                   {completedCount} of {totalReminders} reminders completed
                 </Text>
               </View>
-              <Animatable.View animation="zoomIn" duration={600} useNativeDriver style={[styles.statsHeroRing, { borderColor: colors.primary, backgroundColor: `${colors.primary}12` }]}>
-                <Text style={[styles.statsHeroRingValue, { color: colors.primary }]}>{completionRate}%</Text>
+              <Animatable.View animation="zoomIn" duration={600} useNativeDriver style={[styles.statsHeroRing, { borderColor: colors.onPrimary, backgroundColor: colors.onPrimaryVariant }]}>
+                <Text style={[styles.statsHeroRingValue, { color: colors.onPrimary }]}>{completionRate}%</Text>
               </Animatable.View>
             </View>
-            <View style={[styles.statsHeroProgressTrack, { backgroundColor: colors.surfaceVariant }]}>
+            <View style={[styles.statsHeroProgressTrack, { backgroundColor: colors.onPrimaryVariant }]}>
               <Animatable.View
                 animation="fadeInLeft"
                 duration={800}
                 useNativeDriver
-                style={[styles.statsHeroProgressFill, { width: `${completionRate}%`, backgroundColor: colors.primary }]}
+                style={[styles.statsHeroProgressFill, { width: `${completionRate}%`, backgroundColor: colors.onPrimary }]}
               />
             </View>
             <View style={styles.statsHeroMetaRow}>
               <View style={styles.statsHeroMetaItem}>
-                <MaterialCommunityIcons name="calendar-today" size={14} color={colors.onSurfaceVariant} />
-                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{todayReminders} today</Text>
+                <MaterialCommunityIcons name="calendar-today" size={16} color={colors.onPrimaryVariant} />
+                <Text style={[styles.statsHeroMetaText, { color: colors.onPrimaryVariant }]}>{todayReminders} today</Text>
               </View>
               <View style={styles.statsHeroMetaItem}>
-                <MaterialCommunityIcons name="star-outline" size={14} color={colors.onSurfaceVariant} />
-                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{importantReminders} important</Text>
+                <MaterialCommunityIcons name="star" size={16} color={colors.onPrimaryVariant} />
+                <Text style={[styles.statsHeroMetaText, { color: colors.onPrimaryVariant }]}>{importantReminders} important</Text>
               </View>
               <View style={styles.statsHeroMetaItem}>
-                <MaterialCommunityIcons name="fire" size={14} color={colors.onSurfaceVariant} />
-                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{streak} streak</Text>
+                <MaterialCommunityIcons name="fire" size={16} color={colors.onPrimaryVariant} />
+                <Text style={[styles.statsHeroMetaText, { color: colors.onPrimaryVariant }]}>{streak} streak</Text>
               </View>
             </View>
           </View>
@@ -1867,27 +1891,30 @@ function StatsTab({ reminders, completedCount, isDark, palette, isSmallScreen, i
                 },
                 isDark && styles.cardOnDark
               ]}>
-                <View style={[styles.statsCardTopAccent, { backgroundColor: card.iconColor }]} />
-                <View style={[styles.statsCardIcon, { backgroundColor: `${card.iconColor}20` }]}>
-                  <MaterialCommunityIcons name={card.icon} size={22} color={card.iconColor} />
+                <View style={styles.statsCardRow}>
+                  <View style={[styles.statsCardIcon, { backgroundColor: `${card.iconColor}15` }]}>
+                    <MaterialCommunityIcons name={card.icon} size={26} color={card.iconColor} />
+                  </View>
+                  <View style={styles.statsCardContent}>
+                    <Text style={[styles.modernStatsTitle, isDark && styles.textOnDark]}>{card.title}</Text>
+                    <Text style={[styles.modernStatsValue, { color: card.iconColor }]}>{card.value}</Text>
+                    {card.isDouble ? (
+                      <View style={styles.statsDoubleRow}>
+                        <Text style={[styles.modernStatsSubtitle, isDark && styles.mutedOnDark]}>{card.subtitle}</Text>
+                        <View style={[styles.statsMiniBadge, { backgroundColor: `${colors.success}15`, borderColor: colors.success }]}>
+                          <Text style={[styles.statsMiniBadgeText, { color: colors.success }]}>{card.secondValue}</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={[styles.modernStatsSubtitle, isDark && styles.mutedOnDark]}>{card.subtitle}</Text>
+                    )}
+                    {card.showProgress && (
+                      <View style={[styles.modernProgressBar, { backgroundColor: colors.surfaceVariant }]}>
+                        <View style={[styles.modernProgressFill, { width: `${card.progress}%`, backgroundColor: card.iconColor }]} />
+                      </View>
+                    )}
+                  </View>
                 </View>
-                <Text style={[styles.modernStatsTitle, isDark && styles.textOnDark]}>{card.title}</Text>
-                <Text style={[styles.modernStatsValue, { color: card.iconColor }]}>{card.value}</Text>
-                {card.isDouble ? (
-                  <View style={styles.statsDoubleRow}>
-                    <Text style={[styles.modernStatsSubtitle, isDark && styles.mutedOnDark]}>{card.subtitle}</Text>
-                    <View style={[styles.statsMiniBadge, { backgroundColor: `${colors.success}20` }]}>
-                      <Text style={[styles.statsMiniBadgeText, { color: colors.success }]}>{card.secondValue}</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <Text style={[styles.modernStatsSubtitle, isDark && styles.mutedOnDark]}>{card.subtitle}</Text>
-                )}
-                {card.showProgress && (
-                  <View style={[styles.modernProgressBar, { backgroundColor: colors.surfaceVariant }]}>
-                    <View style={[styles.modernProgressFill, { width: `${card.progress}%`, backgroundColor: card.iconColor }]} />
-                  </View>
-                )}
               </Pressable>
             </Animatable.View>
           ))}
@@ -2755,7 +2782,7 @@ function VisualCue({ reminder, size, iconSize, compact = false, palette }) {
     return <Image source={{ uri: reminder.imageUri }} style={[styles.imagePlaceholder, { height: size, width: size }]} />;
   }
 
-  if (visualType === "emoji") {
+  if (visualType === "emoji" && reminder.emoji) {
     const isCompact = compact || size <= 48;
     return (
       <View style={[isCompact ? styles.compactEmojiCueWrap : styles.imagePlaceholder, { backgroundColor: colors.primaryContainer, height: size, width: size }]}>
@@ -2768,17 +2795,22 @@ function VisualCue({ reminder, size, iconSize, compact = false, palette }) {
               : { fontSize: iconSize, lineHeight: iconSize + 10 }
           ]}
         >
-          {reminder.emoji || "\u{1F514}"}
+          {reminder.emoji}
         </Text>
       </View>
     );
   }
 
-  return (
-    <View style={[styles.imagePlaceholder, { backgroundColor: colors.primaryContainer, height: size, width: size }]}>
-      <MaterialCommunityIcons name={reminder.icon || "bell-outline"} size={iconSize} color={colors.primary} />
-    </View>
-  );
+  if (visualType === "icon" && reminder.icon) {
+    return (
+      <View style={[styles.imagePlaceholder, { backgroundColor: colors.primaryContainer, height: size, width: size }]}>
+        <MaterialCommunityIcons name={reminder.icon} size={iconSize} color={colors.primary} />
+      </View>
+    );
+  }
+
+  // Return null if no visual cue is set
+  return null;
 }
 
 function VisualSourcePicker({ reminder, isDark = false, palette, onUpdate, onAttachImage }) {
@@ -3422,35 +3454,42 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: 8,
-    padding: 4
+    padding: 8,
+    alignItems: "flex-start"
   },
   modernStatsCard: {
-    width: "48%",
+    flex: 1,
     minWidth: 140,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 12,
-    paddingTop: 14,
-    marginBottom: 6,
-    elevation: 2,
+    maxWidth: "48%",
+    margin: 4,
+    borderRadius: 20,
+    borderWidth: 0,
+    padding: 16,
+    paddingTop: 20,
+    elevation: 4,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
     overflow: "hidden",
     position: "relative"
   },
   modernStatsCardCompact: {
-    width: "100%",
+    flex: 1,
     minWidth: 0,
-    padding: 10,
-    paddingTop: 12
+    maxWidth: "48%",
+    margin: 4,
+    padding: 12,
+    paddingTop: 16,
+    borderRadius: 18
   },
   modernStatsCardLarge: {
-    width: "31.5%",
-    minWidth: 160
+    flex: 1,
+    minWidth: 180,
+    maxWidth: "48%",
+    margin: 4,
+    padding: 18,
+    paddingTop: 22
   },
   statsCardTopAccent: {
     position: "absolute",
@@ -3603,70 +3642,74 @@ const styles = StyleSheet.create({
   },
   statsHeroCard: {
     borderRadius: 24,
-    borderWidth: 1,
-    marginHorizontal: 4,
-    marginBottom: 14,
-    padding: 18,
-    paddingLeft: 22,
+    borderWidth: 0,
+    marginHorizontal: 8,
+    marginBottom: 20,
+    padding: 24,
+    paddingLeft: 24,
     overflow: "hidden",
     position: "relative",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 6
   },
   statsHeroAccent: {
     position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
-    width: 4
+    width: 0
   },
   statsHeroRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12
+    gap: 16
   },
   statsHeroCopy: {
     flex: 1,
     minWidth: 0
   },
   statsHeroEyebrow: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.6,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.5,
     textTransform: "uppercase",
-    marginBottom: 6
+    marginBottom: 8,
+    opacity: 0.9
   },
   statsHeroTitle: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: "800",
     color: TEXT,
-    marginBottom: 4,
-    letterSpacing: -0.3
+    marginBottom: 6,
+    letterSpacing: -0.5
   },
   statsHeroSubtitle: {
-    fontSize: 13,
-    color: MUTED
+    fontSize: 14,
+    color: MUTED,
+    fontWeight: "500",
+    opacity: 0.85
   },
   statsHeroRing: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     borderWidth: 4,
     alignItems: "center",
     justifyContent: "center"
   },
   statsHeroRingValue: {
-    fontSize: 20,
-    fontWeight: "800"
+    fontSize: 24,
+    fontWeight: "800",
+    letterSpacing: -0.5
   },
   statsHeroProgressTrack: {
     height: 10,
     borderRadius: 8,
     overflow: "hidden",
-    marginTop: 16
+    marginTop: 20
   },
   statsHeroProgressFill: {
     height: "100%",
@@ -3675,16 +3718,19 @@ const styles = StyleSheet.create({
   statsHeroMetaRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 14,
-    marginTop: 14
+    gap: 20,
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.2)"
   },
   statsHeroMetaItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4
+    gap: 8
   },
   statsHeroMetaText: {
-    fontSize: 12,
+    fontSize: 13,
     color: MUTED,
     fontWeight: "600"
   },
@@ -3726,28 +3772,41 @@ const styles = StyleSheet.create({
     lineHeight: 18
   },
   statsCardIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8
+    marginBottom: 0
+  },
+  statsCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14
+  },
+  statsCardContent: {
+    flex: 1,
+    minWidth: 0
   },
   modernStatsTitle: {
     fontSize: 12,
     fontWeight: "600",
-    marginBottom: 3,
-    color: TEXT
+    marginBottom: 4,
+    color: TEXT,
+    letterSpacing: 0.3,
+    textTransform: "uppercase"
   },
   modernStatsValue: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: "800",
-    marginBottom: 3
+    marginBottom: 4,
+    letterSpacing: -0.5
   },
   modernStatsSubtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: MUTED,
-    marginBottom: 6
+    marginBottom: 6,
+    lineHeight: 16
   },
   statsDoubleRow: {
     flexDirection: "row",
@@ -3756,23 +3815,24 @@ const styles = StyleSheet.create({
     marginBottom: 6
   },
   statsMiniBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1
   },
   statsMiniBadgeText: {
     fontSize: 10,
     fontWeight: "700"
   },
   modernProgressBar: {
-    borderRadius: 2,
-    height: 4,
+    borderRadius: 4,
+    height: 6,
     overflow: "hidden",
     marginTop: 6
   },
   modernProgressFill: {
-    borderRadius: 6,
-    height: "100%"
+    height: "100%",
+    borderRadius: 4
   },
   scheduleRow: {
     alignItems: "center",
@@ -3948,10 +4008,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderRadius: 14,
-    marginHorizontal: 16,
-    marginVertical: 4,
+    marginHorizontal: 8,
+    marginVertical: 3,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -3959,10 +4019,10 @@ const styles = StyleSheet.create({
     shadowRadius: 3
   },
   tableTaskRowCompact: {
-    marginHorizontal: 12,
-    marginVertical: 3,
+    marginHorizontal: 6,
+    marginVertical: 2,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 12
   },
   tableTaskLeft: {
@@ -4000,16 +4060,36 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   tableMetaBadge: {
-    width: 14,
-    height: 14,
-    borderRadius: 5,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center"
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginRight: 6
   },
-  tableTaskDesc: {
+  tableMetaBadgeText: {
+    fontSize: 10,
+    fontWeight: "600"
+  },
+  tableTaskBadges: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6
+  },
+  tableTaskDate: {
     fontSize: 11,
     color: MUTED,
-    flex: 1,
+    fontWeight: "500",
+    marginTop: 2
+  },
+  tableTaskDesc: {
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 4,
+    lineHeight: 16,
     minWidth: 0
   },
   tableTaskRight: {
@@ -4032,6 +4112,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.03)"
+  },
+  tableCompleteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8
   },
   visualBubble: {
     alignItems: "center",
@@ -4368,6 +4456,20 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 8,
     width: 36
+  },
+  attachImageButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    width: "100%",
+    gap: 8
+  },
+  attachImageText: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 8
   },
   editField: {
     alignItems: "center",
