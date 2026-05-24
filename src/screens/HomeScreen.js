@@ -230,6 +230,10 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [imagePickerDialogOpen, setImagePickerDialogOpen] = useState(false);
+  const [reminderToDelete, setReminderToDelete] = useState(null);
   const settings = { ...DEFAULT_SETTINGS, ...appSettings };
   const activeScheme = settings.themeMode;
   const isDark = typeof isDarkOverride === "boolean" ? isDarkOverride : activeScheme === "dark";
@@ -452,48 +456,36 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     }
     isDeletingRef.current = true;
     console.log("confirmDeleteReminder called for:", reminder.id);
-    const doDelete = () => {
-      console.log("Delete confirmed for:", reminder.id);
+    setReminderToDelete({ reminder, afterDelete });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirmed = () => {
+    if (reminderToDelete) {
+      console.log("Delete confirmed for:", reminderToDelete.reminder.id);
       setDeleting(true);
-      deleteReminderWithUndo(reminder, afterDelete);
+      deleteReminderWithUndo(reminderToDelete.reminder, reminderToDelete.afterDelete);
       setTimeout(() => {
         isDeletingRef.current = false;
       }, 500);
-    };
-    const doCancel = () => {
-      isDeletingRef.current = false;
-    };
-    if (Platform.OS === "web") {
-      if (typeof window !== "undefined" && window.confirm("Delete reminder? This removes the reminder and cancels its scheduled alarm.")) {
-        doDelete();
-      } else {
-        doCancel();
-      }
-      return;
     }
-    Alert.alert("Delete reminder?", "This removes the reminder and cancels its scheduled alarm.", [
-      { text: "Cancel", style: "cancel", onPress: doCancel },
-      { text: "Delete", style: "destructive", onPress: doDelete }
-    ]);
+    setDeleteDialogOpen(false);
+    setReminderToDelete(null);
   };
 
   const confirmResetReminders = () => {
-    Alert.alert("Reset all reminders?", "This deletes every reminder on this device and cancels scheduled alerts. This action cannot be undone.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Reset",
-        style: "destructive",
-        onPress: async () => {
-          if (Notifications) {
-            await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
-          }
-          await Promise.all(reminders.map((reminder) => cancelNativeAlarm(reminder.id).catch(() => false)));
-          resetPrototype();
-          setUndoDelete(null);
-          setMessage("Reminder data reset.");
-        }
-      }
-    ]);
+    setResetDialogOpen(true);
+  };
+
+  const handleResetConfirmed = async () => {
+    if (Notifications) {
+      await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+    }
+    await Promise.all(reminders.map((reminder) => cancelNativeAlarm(reminder.id).catch(() => false)));
+    resetPrototype();
+    setUndoDelete(null);
+    setMessage("Reminder data reset.");
+    setResetDialogOpen(false);
   };
 
   const pickImage = async (source) => {
@@ -516,13 +508,14 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: themedSurface }, isDark && styles.safeAreaDark]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        enabled={Platform.OS === "ios"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
-      >
+    <PaperProvider theme={{ colors: { primary: palette.primary, onSurface: palette.onSurface, surface: palette.surface, onSurfaceVariant: palette.onSurfaceVariant } }}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: themedSurface }, isDark && styles.safeAreaDark]}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          enabled={Platform.OS === "ios"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
+        >
         {reminding ? (
           <ReminderPrompt reminder={activeReminder} isDark={isDark} palette={palette} onNo={() => handlePromptResponse(activeReminder, false)} onYes={() => handlePromptResponse(activeReminder, true)} />
         ) : editing ? (
@@ -536,19 +529,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
             onUpdate={(patch) => {
               setEditing((current) => ({ ...current, ...patch }));
             }}
-            onAttachImage={async () => {
-              Alert.alert("Photo visual cue", "Choose how to attach an image.", [
-                { text: "Choose from phone", onPress: async () => {
-                    const imageUri = await pickImage("library");
-                    if (imageUri) setEditing((current) => ({ ...current, imageUri, visualType: "image" }));
-                  } },
-                { text: "Take photo", onPress: async () => {
-                    const imageUri = await pickImage("camera");
-                    if (imageUri) setEditing((current) => ({ ...current, imageUri, visualType: "image" }));
-                  } },
-                { text: "Cancel", style: "cancel" }
-              ]);
-            }}
+            onAttachImage={() => setImagePickerDialogOpen(true)}
             onSave={async () => {
               if (!editing.title.trim()) {
                 setMessage("Title is required.");
@@ -789,6 +770,70 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
       </Animatable.View>
       {tab === "home" && BannerAdComponent && <BannerAdComponent style={styles.bannerAd} />}
     </SafeAreaView>
+    
+    {/* Delete confirmation dialog */}
+    <Portal>
+      <Dialog visible={deleteDialogOpen} onDismiss={() => { setDeleteDialogOpen(false); setReminderToDelete(null); isDeletingRef.current = false; }} style={{ backgroundColor: palette.surface }}>
+        <Dialog.Title style={{ color: palette.onSurface }}>Delete Reminder?</Dialog.Title>
+        <Dialog.Content>
+          <Text style={{ color: palette.onSurfaceVariant }}>This removes the reminder and cancels its scheduled alarm.</Text>
+        </Dialog.Content>
+        <Dialog.Actions>
+          <Button onPress={() => { setDeleteDialogOpen(false); setReminderToDelete(null); isDeletingRef.current = false; }} textColor={palette.primary}>Cancel</Button>
+          <Button onPress={handleDeleteConfirmed} textColor={palette.error}>Delete</Button>
+        </Dialog.Actions>
+      </Dialog>
+    </Portal>
+
+    {/* Reset confirmation dialog */}
+    <Portal>
+      <Dialog visible={resetDialogOpen} onDismiss={() => setResetDialogOpen(false)} style={{ backgroundColor: palette.surface }}>
+        <Dialog.Title style={{ color: palette.onSurface }}>Reset All Reminders?</Dialog.Title>
+        <Dialog.Content>
+          <Text style={{ color: palette.onSurfaceVariant }}>This deletes every reminder on this device and cancels scheduled alerts. This action cannot be undone.</Text>
+        </Dialog.Content>
+        <Dialog.Actions>
+          <Button onPress={() => setResetDialogOpen(false)} textColor={palette.primary}>Cancel</Button>
+          <Button onPress={handleResetConfirmed} textColor={palette.error}>Reset</Button>
+        </Dialog.Actions>
+      </Dialog>
+    </Portal>
+
+    {/* Image picker dialog */}
+    <Portal>
+      <Dialog visible={imagePickerDialogOpen} onDismiss={() => setImagePickerDialogOpen(false)} style={{ backgroundColor: palette.surface }}>
+        <Dialog.Title style={{ color: palette.onSurface }}>Photo Visual Cue</Dialog.Title>
+        <Dialog.Content>
+          <Text style={{ color: palette.onSurfaceVariant, marginBottom: 12 }}>Choose how to attach an image.</Text>
+          <Pressable
+            style={[styles.visualOptionButton, { backgroundColor: palette.surfaceVariant }]}
+            onPress={async () => {
+              const imageUri = await pickImage("library");
+              if (imageUri) setEditing((current) => ({ ...current, imageUri, visualType: "image" }));
+              setImagePickerDialogOpen(false);
+            }}
+          >
+            <MaterialCommunityIcons name="image" size={24} color={palette.primary} />
+            <Text style={[styles.visualOptionText, { color: palette.onSurface }]}>Choose from phone</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.visualOptionButton, { backgroundColor: palette.surfaceVariant }]}
+            onPress={async () => {
+              const imageUri = await pickImage("camera");
+              if (imageUri) setEditing((current) => ({ ...current, imageUri, visualType: "image" }));
+              setImagePickerDialogOpen(false);
+            }}
+          >
+            <MaterialCommunityIcons name="camera" size={24} color={palette.primary} />
+            <Text style={[styles.visualOptionText, { color: palette.onSurface }]}>Take photo</Text>
+          </Pressable>
+        </Dialog.Content>
+        <Dialog.Actions>
+          <Button onPress={() => setImagePickerDialogOpen(false)} textColor={palette.primary}>Cancel</Button>
+        </Dialog.Actions>
+      </Dialog>
+    </Portal>
+    </PaperProvider>
   );
 }
 
@@ -808,7 +853,7 @@ function ScreenTitle({ children, action, isDark = false }) {
 
 function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, palette, onEdit, onToggle, onAdd, onDelete, onRefresh, refreshing, isSmallScreen, isLargeScreen }) {
   const [query, setQuery] = useState("");
-  const [filterMode, setFilterMode] = useState("all"); // all | today | pending | done
+  const [filterMode, setFilterMode] = useState("pending"); // all | pending | done
   const [deletingId, setDeletingId] = useState(null);
   const isDeletingRef = useRef(false);
   const colors = palette || getPalette(themeColors, isDark);
@@ -839,10 +884,9 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
   });
 
   const filterChips = [
-    { key: "all", label: "All", icon: "view-grid-outline", count: totalCount },
-    { key: "today", label: "Today", icon: "calendar-today", count: todayCount },
     { key: "pending", label: "Pending", icon: "clock-outline", count: pendingCount },
-    { key: "done", label: "Done", icon: "check-circle-outline", count: completedCount }
+    { key: "done", label: "Done", icon: "check-circle-outline", count: completedCount },
+    { key: "all", label: "All", icon: "view-grid-outline", count: totalCount }
   ];
 
   const handleDelete = (reminder) => {
@@ -1296,6 +1340,9 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
   const [visualPickerOpen, setVisualPickerOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [ringtonePickerOpen, setRingtonePickerOpen] = useState(false);
+  const [followUpCountPickerOpen, setFollowUpCountPickerOpen] = useState(false);
+  const [followUpIntervalPickerOpen, setFollowUpIntervalPickerOpen] = useState(false);
   const currentScheduled = isValid(parseISO(reminder.scheduledAt)) ? parseISO(reminder.scheduledAt) : new Date();
   const timePickerValue = reminder.timeSet === false ? new Date() : currentScheduled;
   const datePickerValue = reminder.hasDate === false ? new Date() : currentScheduled;
@@ -1322,6 +1369,29 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           }
         }
       });
+      return;
+    }
+    if (Platform.OS === "web") {
+      // For web, use HTML input
+      const input = document.createElement('input');
+      input.type = 'time';
+      input.style.position = 'fixed';
+      input.style.left = '-9999px';
+      document.body.appendChild(input);
+      input.addEventListener('change', (e) => {
+        const [hours, minutes] = e.target.value.split(':').map(Number);
+        if (!isNaN(hours) && !isNaN(minutes)) {
+          const nextDate = set(currentScheduled, {
+            hours,
+            minutes,
+            seconds: 0,
+            milliseconds: 0
+          });
+          onUpdate({ scheduledAt: nextDate.toISOString(), timeSet: true });
+        }
+        document.body.removeChild(input);
+      });
+      input.click();
       return;
     }
     setTimeOpen(true);
@@ -1355,6 +1425,31 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       });
       return;
     }
+    if (Platform.OS === "web") {
+      // For web, use HTML input
+      const input = document.createElement('input');
+      input.type = 'date';
+      input.style.position = 'fixed';
+      input.style.left = '-9999px';
+      document.body.appendChild(input);
+      input.addEventListener('change', (e) => {
+        if (e.target.value) {
+          const selectedDate = new Date(e.target.value);
+          if (!isNaN(selectedDate.getTime())) {
+            const nextDate = set(selectedDate, {
+              hours: currentScheduled.getHours(),
+              minutes: currentScheduled.getMinutes(),
+              seconds: 0,
+              milliseconds: 0
+            });
+            onUpdate({ scheduledAt: nextDate.toISOString(), hasDate: true });
+          }
+        }
+        document.body.removeChild(input);
+      });
+      input.click();
+      return;
+    }
     setDateOpen(true);
   };
   const openVisualPicker = () => {
@@ -1373,17 +1468,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
 
   const openRingtonePicker = () => {
     console.log("openRingtonePicker called");
-    Alert.alert(
-      "Reminder sound",
-      "Choose the sound used by the full-screen alarm.",
-      RINGTONE_OPTIONS.map(([value, label]) => ({
-        text: label,
-        onPress: () => {
-          console.log("Ringtone selected:", value);
-          onUpdate({ ringtone: value });
-        }
-      })).concat([{ text: "Cancel", style: "cancel" }])
-    );
+    setRingtonePickerOpen(true);
   };
   const openRepeatUntilPicker = () => {
     if (Platform.OS === "android") {
@@ -1411,31 +1496,11 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
   };
   const openFollowUpCountPicker = () => {
     console.log("openFollowUpCountPicker called");
-    Alert.alert(
-      "Follow-up reminders",
-      "How many extra reminders should fire after the first alert?",
-      FOLLOW_UP_COUNTS.map((count) => ({
-        text: count === 0 ? "Off" : `${count} time${count > 1 ? "s" : ""}`,
-        onPress: () => {
-          console.log("Follow-up count selected:", count);
-          onUpdate({ followUpEnabled: count > 0, followUpCount: count });
-        }
-      })).concat([{ text: "Cancel", style: "cancel" }])
-    );
+    setFollowUpCountPickerOpen(true);
   };
   const openFollowUpIntervalPicker = () => {
     console.log("openFollowUpIntervalPicker called");
-    Alert.alert(
-      "Follow-up interval",
-      "How long should VizMinder wait between follow-up reminders?",
-      FOLLOW_UP_INTERVALS.map((minutes) => ({
-        text: `${minutes} minute${minutes > 1 ? "s" : ""}`,
-        onPress: () => {
-          console.log("Follow-up interval selected:", minutes);
-          onUpdate({ followUpIntervalMinutes: minutes });
-        }
-      })).concat([{ text: "Cancel", style: "cancel" }])
-    );
+    setFollowUpIntervalPickerOpen(true);
   };
   const ringtoneLabel = RINGTONE_OPTIONS.find(([value]) => value === reminder.ringtone)?.[1] || "System alarm";
   return (
@@ -1785,6 +1850,91 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           </Dialog>
         </Portal>
       ) : null}
+      {ringtonePickerOpen ? (
+        <Portal>
+          <Dialog visible={ringtonePickerOpen} onDismiss={() => setRingtonePickerOpen(false)} style={{ backgroundColor: colors.surface }}>
+            <Dialog.Title style={{ color: colors.onSurface }}>Reminder Sound</Dialog.Title>
+            <Dialog.Content>
+              <Text style={[{ color: colors.onSurfaceVariant, marginBottom: 12 }]}>Choose the sound used by the full-screen alarm.</Text>
+              <ScrollView style={{ maxHeight: 300 }}>
+                {RINGTONE_OPTIONS.map(([value, label]) => (
+                  <Pressable
+                    key={value}
+                    style={[styles.visualOptionButton, { backgroundColor: colors.surfaceVariant }, reminder.ringtone === value && { backgroundColor: colors.primaryContainer }]}
+                    onPress={() => {
+                      onUpdate({ ringtone: value });
+                      setRingtonePickerOpen(false);
+                    }}
+                  >
+                    <Text style={[styles.visualOptionText, { color: reminder.ringtone === value ? colors.primary : colors.onSurface }]}>{label}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setRingtonePickerOpen(false)} textColor={colors.primary}>Cancel</Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+      ) : null}
+      {followUpCountPickerOpen ? (
+        <Portal>
+          <Dialog visible={followUpCountPickerOpen} onDismiss={() => setFollowUpCountPickerOpen(false)} style={{ backgroundColor: colors.surface }}>
+            <Dialog.Title style={{ color: colors.onSurface }}>Follow-up Reminders</Dialog.Title>
+            <Dialog.Content>
+              <Text style={[{ color: colors.onSurfaceVariant, marginBottom: 12 }]}>How many extra reminders should fire after the first alert?</Text>
+              <ScrollView style={{ maxHeight: 300 }}>
+                {FOLLOW_UP_COUNTS.map((count) => (
+                  <Pressable
+                    key={count}
+                    style={[styles.visualOptionButton, { backgroundColor: colors.surfaceVariant }, reminder.followUpCount === count && { backgroundColor: colors.primaryContainer }]}
+                    onPress={() => {
+                      onUpdate({ followUpEnabled: count > 0, followUpCount: count });
+                      setFollowUpCountPickerOpen(false);
+                    }}
+                  >
+                    <Text style={[styles.visualOptionText, { color: reminder.followUpCount === count ? colors.primary : colors.onSurface }]}>
+                      {count === 0 ? "Off" : `${count} time${count > 1 ? "s" : ""}`}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setFollowUpCountPickerOpen(false)} textColor={colors.primary}>Cancel</Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+      ) : null}
+      {followUpIntervalPickerOpen ? (
+        <Portal>
+          <Dialog visible={followUpIntervalPickerOpen} onDismiss={() => setFollowUpIntervalPickerOpen(false)} style={{ backgroundColor: colors.surface }}>
+            <Dialog.Title style={{ color: colors.onSurface }}>Follow-up Interval</Dialog.Title>
+            <Dialog.Content>
+              <Text style={[{ color: colors.onSurfaceVariant, marginBottom: 12 }]}>How long should VizMinder wait between follow-up reminders?</Text>
+              <ScrollView style={{ maxHeight: 300 }}>
+                {FOLLOW_UP_INTERVALS.map((minutes) => (
+                  <Pressable
+                    key={minutes}
+                    style={[styles.visualOptionButton, { backgroundColor: colors.surfaceVariant }, reminder.followUpIntervalMinutes === minutes && { backgroundColor: colors.primaryContainer }]}
+                    onPress={() => {
+                      onUpdate({ followUpIntervalMinutes: minutes });
+                      setFollowUpIntervalPickerOpen(false);
+                    }}
+                  >
+                    <Text style={[styles.visualOptionText, { color: reminder.followUpIntervalMinutes === minutes ? colors.primary : colors.onSurface }]}>
+                      {minutes} minute{minutes > 1 ? "s" : ""}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setFollowUpIntervalPickerOpen(false)} textColor={colors.primary}>Cancel</Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+      ) : null}
       {repeatUntilOpen ? (
         <DateTimePicker
           value={repeatUntilValue}
@@ -2069,6 +2219,19 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
 
   const submitEmailAuth = async (mode) => {
     setSyncError("");
+    
+    // Validate email
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      setSyncError("Please enter a valid email address.");
+      return;
+    }
+    
+    // Validate password (Firebase requires min 6 characters)
+    if (!password || password.length < 6) {
+      setSyncError("Password must be at least 6 characters.");
+      return;
+    }
+    
     try {
       if (mode === "register") {
         await registerWithEmail(email, password);
@@ -2079,7 +2242,25 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
       }
       setPassword("");
     } catch (error) {
-      setSyncError(error.message);
+      // Extract meaningful error message from Firebase error
+      const errorCode = error.code;
+      let errorMessage = error.message;
+      
+      if (errorCode === 'auth/email-already-in-use') {
+        errorMessage = "Email already registered. Please sign in instead.";
+      } else if (errorCode === 'auth/invalid-email') {
+        errorMessage = "Invalid email address.";
+      } else if (errorCode === 'auth/weak-password') {
+        errorMessage = "Password is too weak. Use at least 6 characters.";
+      } else if (errorCode === 'auth/user-not-found') {
+        errorMessage = "No account found with this email.";
+      } else if (errorCode === 'auth/wrong-password') {
+        errorMessage = "Incorrect password.";
+      } else if (errorCode === 'auth/too-many-requests') {
+        errorMessage = "Too many attempts. Please try again later.";
+      }
+      
+      setSyncError(errorMessage);
     }
   };
 
@@ -2128,7 +2309,7 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
             },
             isDark && styles.cardOnDark
           ]}>
-            <View style={[styles.accountTint, { backgroundColor: `${colors.primary}12`, pointerEvents: "none" }]} />
+            <View style={[styles.accountTint, { backgroundColor: `${colors.primary}12` }]} pointerEvents="none" />
             <Animatable.View animation="zoomIn" duration={500} useNativeDriver style={[styles.accountAvatar, { backgroundColor: `${colors.primary}25`, borderColor: `${colors.primary}40` }]}>
               <MaterialCommunityIcons name="account-circle" size={isSmallScreen ? 44 : 52} color={colors.primary} />
             </Animatable.View>
