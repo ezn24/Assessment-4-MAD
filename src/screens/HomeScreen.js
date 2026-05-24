@@ -1377,14 +1377,18 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       // For web, use HTML input
       const input = document.createElement('input');
       input.type = 'time';
-      input.style.position = 'fixed';
-      input.style.opacity = '0';
-      input.style.top = '0';
-      input.style.left = '0';
-      input.style.width = '100%';
-      input.style.height = '100%';
-      input.style.zIndex = '9999';
+      input.style.position = 'absolute';
+      input.style.left = '-9999px';
+      input.style.visibility = 'hidden';
       document.body.appendChild(input);
+      
+      // Set min to current time if date is today
+      const now = new Date();
+      const isToday = currentScheduled.toDateString() === now.toDateString();
+      if (isToday) {
+        const minTime = now.toTimeString().slice(0, 5);
+        input.min = minTime;
+      }
       
       const cleanup = () => {
         if (document.body.contains(input)) {
@@ -1401,15 +1405,19 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
             seconds: 0,
             milliseconds: 0
           });
-          onUpdate({ scheduledAt: nextDate.toISOString(), timeSet: true });
+          // Validate not in the past
+          if (nextDate >= now || !isToday) {
+            onUpdate({ scheduledAt: nextDate.toISOString(), timeSet: true });
+          } else {
+            alert("Please select a time in the future");
+          }
         }
         cleanup();
       });
       
       input.addEventListener('cancel', cleanup);
-      input.addEventListener('blur', cleanup);
       
-      setTimeout(() => input.click(), 0);
+      input.showPicker ? input.showPicker() : input.click();
       return;
     }
     setTimeOpen(true);
@@ -1447,14 +1455,15 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       // For web, use HTML input
       const input = document.createElement('input');
       input.type = 'date';
-      input.style.position = 'fixed';
-      input.style.opacity = '0';
-      input.style.top = '0';
-      input.style.left = '0';
-      input.style.width = '100%';
-      input.style.height = '100%';
-      input.style.zIndex = '9999';
+      input.style.position = 'absolute';
+      input.style.left = '-9999px';
+      input.style.visibility = 'hidden';
       document.body.appendChild(input);
+      
+      // Set min to today's date
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      input.min = today;
       
       const cleanup = () => {
         if (document.body.contains(input)) {
@@ -1466,22 +1475,30 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
         if (e.target.value) {
           const selectedDate = new Date(e.target.value);
           if (!isNaN(selectedDate.getTime())) {
-            const nextDate = set(selectedDate, {
-              hours: currentScheduled.getHours(),
-              minutes: currentScheduled.getMinutes(),
-              seconds: 0,
-              milliseconds: 0
-            });
-            onUpdate({ scheduledAt: nextDate.toISOString(), hasDate: true });
+            // Validate not in the past
+            selectedDate.setHours(0, 0, 0, 0);
+            const todayMidnight = new Date();
+            todayMidnight.setHours(0, 0, 0, 0);
+            
+            if (selectedDate >= todayMidnight) {
+              const nextDate = set(selectedDate, {
+                hours: currentScheduled.getHours(),
+                minutes: currentScheduled.getMinutes(),
+                seconds: 0,
+                milliseconds: 0
+              });
+              onUpdate({ scheduledAt: nextDate.toISOString(), hasDate: true });
+            } else {
+              alert("Please select a date in the future");
+            }
           }
         }
         cleanup();
       });
       
       input.addEventListener('cancel', cleanup);
-      input.addEventListener('blur', cleanup);
       
-      setTimeout(() => input.click(), 0);
+      input.showPicker ? input.showPicker() : input.click();
       return;
     }
     setDateOpen(true);
@@ -2249,7 +2266,7 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
   const [syncError, setSyncError] = useState("");
 
   const signedIn = authUser && !authUser.isAnonymous && authUser.uid !== "offline-user";
-  const accountLabel = signedIn ? authUser.email || "Email account" : authUser?.isAnonymous ? "Anonymous session" : "Not signed in";
+  const accountLabel = signedIn ? (authUser.email && authUser.email !== "null" ? authUser.email : "Email account") : authUser?.isAnonymous ? "Anonymous session" : "Not signed in";
 
   const submitEmailAuth = async (mode) => {
     setSyncError("");

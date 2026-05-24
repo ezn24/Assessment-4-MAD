@@ -1,23 +1,31 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+  <!-- Location permissions for location-based reminders -->
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <!-- Network permissions for Firebase sync -->
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
-  <uses-permission android:name="android.permission.BODY_SENSORS"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <!-- Camera permission for taking photos as visual cues -->
   <uses-permission android:name="android.permission.CAMERA"/>
   <uses-permission android:name="android.permission.FLASHLIGHT"/>
-  <uses-permission android:name="android.permission.INTERNET"/>
+  <!-- Notification permission for reminder alerts -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <!-- Storage permissions for saving reminder images -->
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" tools:replace="android:maxSdkVersion"/>
   <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" tools:replace="android:maxSdkVersion"/>
+  <!-- Alarm permission for scheduling exact reminder times -->
   <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+  <!-- System alert window for full-screen reminder display -->
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <!-- Biometric permission for secure authentication -->
   <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+  <!-- Full screen intent for showing reminders on lock screen -->
   <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+  <!-- Vibration and wake lock for reminder alerts -->
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
-  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" tools:replace="android:maxSdkVersion"/>
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>

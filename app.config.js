@@ -7,6 +7,30 @@ module.exports = {
   assetBundlePatterns: [
     "**/*"
   ],
+  android: {
+    permissions: [
+      "ACCESS_COARSE_LOCATION",
+      "ACCESS_FINE_LOCATION",
+      "ACCESS_NETWORK_STATE",
+      "ACCESS_WIFI_STATE",
+      "CAMERA",
+      "FLASHLIGHT",
+      "INTERNET",
+      "POST_NOTIFICATIONS",
+      "READ_EXTERNAL_STORAGE",
+      "READ_MEDIA_IMAGES",
+      "SCHEDULE_EXACT_ALARM",
+      "SYSTEM_ALERT_WINDOW",
+      "USE_BIOMETRIC",
+      "USE_FULL_SCREEN_INTENT",
+      "VIBRATE",
+      "WAKE_LOCK",
+      "WRITE_EXTERNAL_STORAGE"
+    ]
+  },
+  web: {
+    privacyPolicyUrl: "https://example.com/privacy"
+  },
   extra: {
     firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyB5H58jpb6RxcpG8bKeEd0RsvzkIqPBLOU",
     firebaseAuthDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "vizminder-20b7a.firebaseapp.com",
