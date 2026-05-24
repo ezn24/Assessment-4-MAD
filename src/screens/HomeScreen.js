@@ -175,7 +175,9 @@ function getPalette(themeColors = {}, isDark = false) {
     onSurface: themeColors.onSurface || (isDark ? "#E6E0E9" : TEXT),
     onSurfaceVariant: themeColors.onSurfaceVariant || (isDark ? "#CAC4D0" : MUTED),
     outline: themeColors.outline || (isDark ? "#938F99" : LINE),
-    error: themeColors.error || ERROR
+    error: themeColors.error || ERROR,
+    success: themeColors.success || SUCCESS,
+    warning: themeColors.warning || "#FF9500"
   };
 }
 
@@ -508,8 +510,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   };
 
   return (
-    <PaperProvider theme={{ colors: { primary: palette.primary, onSurface: palette.onSurface, surface: palette.surface, onSurfaceVariant: palette.onSurfaceVariant } }}>
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: themedSurface }, isDark && styles.safeAreaDark]}>
+    <>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: themedSurface }, isDark && styles.safeAreaDark]}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -833,7 +835,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
         </Dialog.Actions>
       </Dialog>
     </Portal>
-    </PaperProvider>
+    </>
   );
 }
 
@@ -1376,8 +1378,20 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       const input = document.createElement('input');
       input.type = 'time';
       input.style.position = 'fixed';
-      input.style.left = '-9999px';
+      input.style.opacity = '0';
+      input.style.top = '0';
+      input.style.left = '0';
+      input.style.width = '100%';
+      input.style.height = '100%';
+      input.style.zIndex = '9999';
       document.body.appendChild(input);
+      
+      const cleanup = () => {
+        if (document.body.contains(input)) {
+          document.body.removeChild(input);
+        }
+      };
+      
       input.addEventListener('change', (e) => {
         const [hours, minutes] = e.target.value.split(':').map(Number);
         if (!isNaN(hours) && !isNaN(minutes)) {
@@ -1389,9 +1403,13 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           });
           onUpdate({ scheduledAt: nextDate.toISOString(), timeSet: true });
         }
-        document.body.removeChild(input);
+        cleanup();
       });
-      input.click();
+      
+      input.addEventListener('cancel', cleanup);
+      input.addEventListener('blur', cleanup);
+      
+      setTimeout(() => input.click(), 0);
       return;
     }
     setTimeOpen(true);
@@ -1430,8 +1448,20 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       const input = document.createElement('input');
       input.type = 'date';
       input.style.position = 'fixed';
-      input.style.left = '-9999px';
+      input.style.opacity = '0';
+      input.style.top = '0';
+      input.style.left = '0';
+      input.style.width = '100%';
+      input.style.height = '100%';
+      input.style.zIndex = '9999';
       document.body.appendChild(input);
+      
+      const cleanup = () => {
+        if (document.body.contains(input)) {
+          document.body.removeChild(input);
+        }
+      };
+      
       input.addEventListener('change', (e) => {
         if (e.target.value) {
           const selectedDate = new Date(e.target.value);
@@ -1445,9 +1475,13 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
             onUpdate({ scheduledAt: nextDate.toISOString(), hasDate: true });
           }
         }
-        document.body.removeChild(input);
+        cleanup();
       });
-      input.click();
+      
+      input.addEventListener('cancel', cleanup);
+      input.addEventListener('blur', cleanup);
+      
+      setTimeout(() => input.click(), 0);
       return;
     }
     setDateOpen(true);
@@ -2309,7 +2343,7 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
             },
             isDark && styles.cardOnDark
           ]}>
-            <View style={[styles.accountTint, { backgroundColor: `${colors.primary}12` }]} pointerEvents="none" />
+            <View style={[styles.accountTint, { backgroundColor: `${colors.primary}12`, pointerEvents: "none" }]} />
             <Animatable.View animation="zoomIn" duration={500} useNativeDriver style={[styles.accountAvatar, { backgroundColor: `${colors.primary}25`, borderColor: `${colors.primary}40` }]}>
               <MaterialCommunityIcons name="account-circle" size={isSmallScreen ? 44 : 52} color={colors.primary} />
             </Animatable.View>
@@ -3688,10 +3722,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     overflow: "hidden",
     padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
+    boxShadow: "0px 4px 10px rgba(0,0,0,0.06)",
     elevation: 3
   },
   materialCardDark: {
@@ -3775,10 +3806,7 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 20,
     elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
+    boxShadow: "0px 4px 12px rgba(0,0,0,0.1)",
     overflow: "hidden",
     position: "relative"
   },
@@ -3812,10 +3840,7 @@ const styles = StyleSheet.create({
     paddingLeft: 22,
     overflow: "hidden",
     position: "relative",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
+    boxShadow: "0px 4px 10px rgba(0,0,0,0.07)",
     elevation: 3
   },
   heroBannerAccent: {
@@ -3949,10 +3974,7 @@ const styles = StyleSheet.create({
     paddingLeft: 24,
     overflow: "hidden",
     position: "relative",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
+    boxShadow: "0px 6px 16px rgba(0,0,0,0.3)",
     elevation: 6
   },
   statsHeroAccent: {
@@ -4047,10 +4069,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
+    boxShadow: "0px 2px 6px rgba(0,0,0,0.05)",
     elevation: 2
   },
   settingsRowIcon: {
@@ -4208,10 +4227,7 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingLeft: 22,
     elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.09,
-    shadowRadius: 10,
+    boxShadow: "0px 4px 10px rgba(0,0,0,0.09)",
     overflow: "hidden",
     position: "relative"
   },
@@ -4313,10 +4329,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3
+    boxShadow: "0px 1px 3px rgba(0,0,0,0.04)"
   },
   tableTaskRowCompact: {
     marginHorizontal: 6,
@@ -5006,10 +5019,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    boxShadow: "0px 4px 12px rgba(0,0,0,0.08)",
     overflow: "hidden",
     position: "relative"
   },
@@ -5062,10 +5072,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4
+    boxShadow: "0px 2px 4px rgba(0,0,0,0.1)"
   },
   authHeader: {
     alignItems: "center",
@@ -5137,10 +5144,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4
+    boxShadow: "0px 2px 4px rgba(0,0,0,0.1)"
   },
   syncListTitle: {
     fontSize: 16,
@@ -5191,10 +5195,7 @@ const styles = StyleSheet.create({
     paddingLeft: 18,
     overflow: "hidden",
     position: "relative",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    boxShadow: "0px 3px 8px rgba(0,0,0,0.06)",
     elevation: 3
   },
   deviceHeroAccent: {
@@ -5265,10 +5266,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    boxShadow: "0px 1px 4px rgba(0,0,0,0.04)",
     elevation: 1
   },
   deviceRowAccent: {
@@ -5337,10 +5335,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    boxShadow: "0px 1px 4px rgba(0,0,0,0.04)",
     elevation: 1
   },
   sensorCardHeader: {
@@ -5391,10 +5386,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     padding: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    boxShadow: "0px 1px 4px rgba(0,0,0,0.04)",
     elevation: 1
   },
   securityBannerIcon: {
