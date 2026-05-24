@@ -984,7 +984,7 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
             >
               <View style={styles.tableTaskLeft}>
                 <View style={[styles.tableTaskIcon, { backgroundColor: isDark ? `${colors.primary}20` : `${colors.primary}15` }]}>
-                  <VisualCue reminder={reminder} size={36} iconSize={18} compact palette={colors} />
+                  <VisualCue reminder={reminder} size={48} iconSize={24} compact palette={colors} />
                 </View>
                 <View style={styles.tableTaskInfo}>
                   <Text style={[styles.tableTaskTitle, isDark && styles.textOnDark, reminder.completed && styles.taskCompleted]} numberOfLines={2}>
@@ -1278,6 +1278,9 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
   const [timeOpen, setTimeOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
   const [repeatUntilOpen, setRepeatUntilOpen] = useState(false);
+  const [visualPickerOpen, setVisualPickerOpen] = useState(false);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const currentScheduled = isValid(parseISO(reminder.scheduledAt)) ? parseISO(reminder.scheduledAt) : new Date();
   const timePickerValue = reminder.timeSet === false ? new Date() : currentScheduled;
   const datePickerValue = reminder.hasDate === false ? new Date() : currentScheduled;
@@ -1339,6 +1342,20 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
     }
     setDateOpen(true);
   };
+  const openVisualPicker = () => {
+    setVisualPickerOpen(true);
+  };
+
+  const openIconPicker = () => {
+    setVisualPickerOpen(false);
+    setIconPickerOpen(true);
+  };
+
+  const openEmojiPicker = () => {
+    setVisualPickerOpen(false);
+    setEmojiPickerOpen(true);
+  };
+
   const openRingtonePicker = () => {
     console.log("openRingtonePicker called");
     Alert.alert(
@@ -1410,22 +1427,22 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
     <Animatable.View animation="fadeInUp" duration={300} style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle isDark={isDark}>{mode === "add" ? "New Reminder" : "Edit Reminder"}</ScreenTitle>
       <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="always" showsVerticalScrollIndicator={false}>
-        {reminder.imageUri ? (
+        {reminder.imageUri || reminder.icon || reminder.emoji ? (
           <View style={styles.imageEditWrap}>
             <VisualCue reminder={reminder} size={112} iconSize={52} palette={colors} />
-            <Pressable style={[styles.editFab, { backgroundColor: colors.primary }]} onPress={onAttachImage}>
+            <Pressable style={[styles.editFab, { backgroundColor: colors.primary }]} onPress={openVisualPicker}>
               <MaterialCommunityIcons name="pencil" size={18} color="#FFFFFF" />
             </Pressable>
           </View>
-        ) : null}
-
-        <Pressable 
-          style={[styles.attachImageButton, { backgroundColor: colors.surfaceVariant, borderColor: colors.outline }]} 
-          onPress={onAttachImage}
-        >
-          <MaterialCommunityIcons name="image-plus" size={32} color={colors.primary} />
-          <Text style={[styles.attachImageText, { color: colors.onSurface }]}>Add Photo (Optional)</Text>
-        </Pressable>
+        ) : (
+          <Pressable 
+            style={[styles.attachImageButton, { backgroundColor: colors.surfaceVariant, borderColor: colors.outline }]} 
+            onPress={openVisualPicker}
+          >
+            <MaterialCommunityIcons name="image-plus" size={32} color={colors.primary} />
+            <Text style={[styles.attachImageText, { color: colors.onSurface }]}>Add Photo (Optional)</Text>
+          </Pressable>
+        )}
 
         <EditTextField isDark={isDark} palette={colors} label="Title" value={reminder.title} onChangeText={(title) => onUpdate({ title })} />
         <EditTextField
@@ -1663,6 +1680,95 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
             }
           }}
         />
+      ) : null}
+      {visualPickerOpen ? (
+        <Portal>
+          <Dialog visible={visualPickerOpen} onDismiss={() => setVisualPickerOpen(false)} style={{ backgroundColor: colors.surface }}>
+            <Dialog.Title style={{ color: colors.onSurface }}>Choose Visual Cue</Dialog.Title>
+            <Dialog.Content>
+              <Pressable
+                style={[styles.visualOptionButton, { backgroundColor: colors.surfaceVariant }]}
+                onPress={onAttachImage}
+              >
+                <MaterialCommunityIcons name="camera" size={24} color={colors.primary} />
+                <Text style={[styles.visualOptionText, { color: colors.onSurface }]}>Photo (Camera or Gallery)</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.visualOptionButton, { backgroundColor: colors.surfaceVariant }]}
+                onPress={openIconPicker}
+              >
+                <MaterialCommunityIcons name="emoticon-outline" size={24} color={colors.primary} />
+                <Text style={[styles.visualOptionText, { color: colors.onSurface }]}>Icon</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.visualOptionButton, { backgroundColor: colors.surfaceVariant }]}
+                onPress={openEmojiPicker}
+              >
+                <MaterialCommunityIcons name="emoticon" size={24} color={colors.primary} />
+                <Text style={[styles.visualOptionText, { color: colors.onSurface }]}>Emoji</Text>
+              </Pressable>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setVisualPickerOpen(false)} textColor={colors.primary}>Cancel</Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+      ) : null}
+      {iconPickerOpen ? (
+        <Portal>
+          <Dialog visible={iconPickerOpen} onDismiss={() => setIconPickerOpen(false)} style={{ backgroundColor: colors.surface }}>
+            <Dialog.Title style={{ color: colors.onSurface }}>Select Icon</Dialog.Title>
+            <Dialog.Content>
+              <ScrollView style={{ maxHeight: 300 }}>
+                <View style={styles.choiceGrid}>
+                  {ICON_OPTIONS.map((icon) => (
+                    <Pressable
+                      key={icon}
+                      style={[styles.visualChoice, { backgroundColor: colors.surfaceVariant }, reminder.icon === icon && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                      onPress={() => {
+                        onUpdate({ visualType: "icon", icon, emoji: null, imageUri: null });
+                        setIconPickerOpen(false);
+                      }}
+                    >
+                      <MaterialCommunityIcons name={icon} size={28} color={reminder.icon === icon ? colors.onPrimary : colors.onSurface} />
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setIconPickerOpen(false)} textColor={colors.primary}>Cancel</Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+      ) : null}
+      {emojiPickerOpen ? (
+        <Portal>
+          <Dialog visible={emojiPickerOpen} onDismiss={() => setEmojiPickerOpen(false)} style={{ backgroundColor: colors.surface }}>
+            <Dialog.Title style={{ color: colors.onSurface }}>Select Emoji</Dialog.Title>
+            <Dialog.Content>
+              <ScrollView style={{ maxHeight: 300 }}>
+                <View style={styles.choiceGrid}>
+                  {EMOJI_OPTIONS.map((emoji) => (
+                    <Pressable
+                      key={emoji}
+                      style={[styles.visualChoice, { backgroundColor: colors.surfaceVariant }, reminder.emoji === emoji && { backgroundColor: colors.primaryContainer, borderColor: colors.primary }]}
+                      onPress={() => {
+                        onUpdate({ visualType: "emoji", emoji, icon: null, imageUri: null });
+                        setEmojiPickerOpen(false);
+                      }}
+                    >
+                      <Text style={{ fontSize: 28 }}>{emoji}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setEmojiPickerOpen(false)} textColor={colors.primary}>Cancel</Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
       ) : null}
       {repeatUntilOpen ? (
         <DateTimePicker
@@ -4469,6 +4575,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     marginTop: 8
+  },
+  visualOptionButton: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8
+  },
+  visualOptionText: {
+    fontSize: 16,
+    fontWeight: "500"
   },
   editField: {
     alignItems: "center",
