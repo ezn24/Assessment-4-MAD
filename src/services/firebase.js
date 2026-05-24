@@ -36,9 +36,21 @@ let firebaseServices = null;
 
 function getConfig() {
   const extra = getExpoExtra();
+  console.log("Firebase config from getExpoExtra:", extra);
+  
+  // Fallback to hardcoded config if expo config is not available
   if (!extra.firebaseApiKey || !extra.firebaseProjectId || extra.firebaseApiKey.includes("REPLACE")) {
-    return null;
+    console.warn("Using fallback Firebase config");
+    return {
+      apiKey: "AIzaSyB5H58jpb6RxcpG8bKeEd0RsvzkIqPBLOU",
+      authDomain: "vizminder-20b7a.firebaseapp.com",
+      projectId: "vizminder-20b7a",
+      storageBucket: "vizminder-20b7a.firebasestorage.app",
+      messagingSenderId: "413650478333",
+      appId: "1:413650478333:web:99661ff33bf09a72aa0a94"
+    };
   }
+  
   return {
     apiKey: extra.firebaseApiKey,
     authDomain: extra.firebaseAuthDomain,
@@ -100,14 +112,14 @@ export function listenToAuthState(callback) {
 export function validatePassword(password) {
   const letters = (password.match(/[A-Za-z]/g) || []).length;
   const digits = (password.match(/\d/g) || []).length;
-  if (password.length < 8) {
-    return "Password must be at least 8 characters.";
+  if (password.length < 6) {
+    return "Password must be at least 6 characters.";
   }
-  if (letters < 2) {
-    return "Password must contain at least 2 letters.";
+  if (letters < 1) {
+    return "Password must contain at least 1 letter.";
   }
-  if (digits < 6) {
-    return "Password must contain at least 6 numbers.";
+  if (digits < 1) {
+    return "Password must contain at least 1 number.";
   }
   return "";
 }
@@ -139,6 +151,9 @@ export async function loginWithEmail(email, password) {
 }
 
 function getReadableAuthError(error) {
+  if (error?.code === "auth/configuration-not-found") {
+    return "Firebase is not configured. Please check your Firebase project settings and API key in app configuration.";
+  }
   if (error?.code === "auth/operation-not-allowed") {
     return "This Firebase sign-in provider is not enabled. Enable Email/Password in Firebase Console > Authentication > Sign-in method.";
   }
@@ -151,7 +166,20 @@ function getReadableAuthError(error) {
   if (error?.code === "auth/invalid-email") {
     return "Enter a valid email address.";
   }
-  return error?.message || "Firebase sign-in failed.";
+  if (error?.code === "auth/weak-password") {
+    return "Password is too weak. Use at least 6 characters with letters and numbers.";
+  }
+  if (error?.code === "auth/too-many-requests") {
+    return "Too many attempts. Please try again later.";
+  }
+  if (error?.code === "auth/user-not-found") {
+    return "No account found with this email. Please register first.";
+  }
+  if (error?.code === "auth/wrong-password") {
+    return "Incorrect password. Please try again.";
+  }
+  console.error("Firebase auth error:", error?.code, error?.message);
+  return error?.message || "Authentication failed. Please try again.";
 }
 
 export async function signInGuest() {
