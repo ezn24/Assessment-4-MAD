@@ -191,7 +191,7 @@ function createDraftReminder() {
     emoji: null,
     scheduledAt: now,
     createdAt: now,
-    timeSet: true,
+    timeSet: false,
     hasDate: false,
     repeat: false,
     repeatUntil: null,
@@ -627,7 +627,11 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   refreshing={refreshing}
                   onEdit={(reminder) => {
                     setEditMode("edit");
-                    setEditing({ ...reminder });
+                    setEditing({ 
+                      ...reminder, 
+                      timeSet: reminder.timeSet !== undefined ? reminder.timeSet : true,
+                      hasDate: reminder.hasDate !== undefined ? reminder.hasDate : false
+                    });
                   }}
                   onToggle={async (reminder, completed) =>
                     {
@@ -665,7 +669,11 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   refreshing={refreshing}
                   onEdit={(reminder) => {
                     setEditMode("edit");
-                    setEditing({ ...reminder });
+                    setEditing({ 
+                      ...reminder, 
+                      timeSet: reminder.timeSet !== undefined ? reminder.timeSet : true,
+                      hasDate: reminder.hasDate !== undefined ? reminder.hasDate : false
+                    });
                   }}
                   isSmallScreen={isSmallScreen}
                   isLargeScreen={isLargeScreen}
@@ -821,6 +829,13 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
     if (filterMode === "pending") return !reminder.completed;
     if (filterMode === "done") return !!reminder.completed;
     return true;
+  }).sort((a, b) => {
+    // Sort by completed status (incomplete first, completed last)
+    if (a.completed !== b.completed) {
+      return a.completed ? 1 : -1;
+    }
+    // Then sort by scheduled time (earliest first)
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
   });
 
   const filterChips = [
@@ -1291,7 +1306,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       DateTimePickerAndroid.open({
         value: timePickerValue,
         mode: "time",
-        display: "default",
+        display: "spinner",
         is24Hour: true,
         positiveButton: { label: "OK", textColor: colors.primary },
         negativeButton: { label: "Cancel", textColor: colors.onSurfaceVariant },
@@ -1317,7 +1332,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       DateTimePickerAndroid.open({
         value: datePickerValue,
         mode: "date",
-        display: "default",
+        display: "spinner",
         positiveButton: { label: "OK", textColor: colors.primary },
         negativeButton: { label: "Cancel", textColor: colors.onSurfaceVariant },
         neutralButton: { label: "Clear", textColor: colors.onSurfaceVariant },
@@ -1375,7 +1390,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       DateTimePickerAndroid.open({
         value: repeatUntilValue,
         mode: "date",
-        display: "default",
+        display: "spinner",
         positiveButton: { label: "OK", textColor: colors.primary },
         negativeButton: { label: "Cancel", textColor: colors.onSurfaceVariant },
         neutralButton: { label: "Clear", textColor: colors.onSurfaceVariant },
