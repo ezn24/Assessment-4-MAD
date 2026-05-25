@@ -2,6 +2,28 @@ import { NativeModules, Platform } from "react-native";
 
 const { AlarmScheduler } = NativeModules;
 
+export async function requestExactAlarmPermission() {
+  if (Platform.OS !== "android" || !AlarmScheduler) {
+    return true;
+  }
+  try {
+    return await AlarmScheduler.requestExactAlarmPermission();
+  } catch {
+    return false;
+  }
+}
+
+export async function canScheduleExactAlarms() {
+  if (Platform.OS !== "android" || !AlarmScheduler) {
+    return true;
+  }
+  try {
+    return await AlarmScheduler.canScheduleExactAlarms();
+  } catch {
+    return false;
+  }
+}
+
 export async function scheduleNativeAlarm(reminder) {
   if (Platform.OS !== "android" || !AlarmScheduler || reminder.completed || reminder.timeSet === false) {
     return false;

@@ -38,7 +38,7 @@ import {
   registerWithEmail,
   signOutUser
 } from "../services/firebase";
-import { cancelNativeAlarm, scheduleNativeAlarm } from "../services/nativeAlarm";
+import { cancelNativeAlarm, canScheduleExactAlarms, requestExactAlarmPermission, scheduleNativeAlarm } from "../services/nativeAlarm";
 
 const PURPLE = "#4F378B";
 const LIGHT_PURPLE = "#EADDFF";
@@ -537,6 +537,11 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
 
   useEffect(() => {
     configureNotificationChannel().catch(() => {});
+    if (Platform.OS === "android") {
+      // Request exact alarm permission proactively on Android 12.
+      // On Android 13+ USE_EXACT_ALARM is auto-granted so this returns true immediately.
+      requestExactAlarmPermission().catch(() => {});
+    }
     if (Platform.OS === "android" && Notifications) {
       // Android reminders now use the native full-screen alarm path.
       // Clear legacy Expo reminder schedules from older APKs so they do not ring in parallel.

@@ -26,7 +26,8 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
       }
 
       val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+      // On Android 12 (S), check canScheduleExactAlarms (USE_EXACT_ALARM auto-grants on Android 13+)
+      if (Build.VERSION.SDK_INT == Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
         val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
           data = Uri.parse("package:${reactContext.packageName}")
           flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -109,6 +110,46 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
       promise.resolve(true)
     } catch (error: Exception) {
       promise.reject("ALARM_CANCEL_FAILED", error)
+    }
+  }
+
+  @ReactMethod
+  fun canScheduleExactAlarms(promise: Promise) {
+    try {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        promise.resolve(true)
+        return
+      }
+      val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+      promise.resolve(alarmManager.canScheduleExactAlarms())
+    } catch (e: Exception) {
+      promise.resolve(false)
+    }
+  }
+
+  @ReactMethod
+  fun requestExactAlarmPermission(promise: Promise) {
+    try {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        promise.resolve(true)
+        return
+      }
+      val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+      if (alarmManager.canScheduleExactAlarms()) {
+        promise.resolve(true)
+        return
+      }
+      // Only Android 12 (S) needs this — Android 13+ USE_EXACT_ALARM is auto-granted
+      if (Build.VERSION.SDK_INT == Build.VERSION_CODES.S) {
+        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+          data = Uri.parse("package:${reactContext.packageName}")
+          flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        reactContext.startActivity(intent)
+      }
+      promise.resolve(false)
+    } catch (e: Exception) {
+      promise.resolve(false)
     }
   }
 
