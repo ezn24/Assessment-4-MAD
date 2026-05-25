@@ -7,7 +7,20 @@ module.exports = {
   assetBundlePatterns: [
     "**/*"
   ],
+  plugins: [
+    [
+      "react-native-google-mobile-ads",
+      {
+        // Google's official AdMob test App IDs. Replace with real IDs before shipping.
+        androidAppId: "ca-app-pub-3940256099942544~3347511713",
+        iosAppId: "ca-app-pub-3940256099942544~1458002511",
+        delayAppMeasurementInit: true,
+        userTrackingUsageDescription: "This identifier will be used to deliver personalized ads to you."
+      }
+    ]
+  ],
   android: {
+    package: "com.ezn24.vizminder",
     permissions: [
       "ACCESS_COARSE_LOCATION",
       "ACCESS_FINE_LOCATION",

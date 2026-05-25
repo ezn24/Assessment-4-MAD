@@ -15,14 +15,16 @@ function Get-JavaMajor($javaExe) {
 if (Test-Path (Join-Path $portableJdk "bin\java.exe")) {
   $env:JAVA_HOME = $portableJdk
 } elseif ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\java.exe"))) {
-  if ((Get-JavaMajor (Join-Path $env:JAVA_HOME "bin\java.exe")) -ne 17) {
-    throw "JAVA_HOME must point to JDK 17. Current JAVA_HOME is $env:JAVA_HOME."
+  $major = Get-JavaMajor (Join-Path $env:JAVA_HOME "bin\java.exe")
+  if ($major -lt 17) {
+    throw "JAVA_HOME must point to JDK 17 or newer. Current JAVA_HOME is $env:JAVA_HOME (Java $major)."
   }
 } else {
   $javaCmd = Get-Command java -ErrorAction SilentlyContinue
-  if (!$javaCmd -or (Get-JavaMajor $javaCmd.Source) -ne 17) {
-    throw "JDK 17 is required for local Android builds. Install JDK 17 or place it at $portableJdk."
+  if (!$javaCmd -or (Get-JavaMajor $javaCmd.Source) -lt 17) {
+    throw "JDK 17 or newer is required for local Android builds. Install JDK 17+ or place it at $portableJdk."
   }
+  $env:JAVA_HOME = (Split-Path (Split-Path $javaCmd.Source))
 }
 
 $env:PATH = "$(Join-Path $env:JAVA_HOME "bin");$env:PATH"
