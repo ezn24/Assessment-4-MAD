@@ -38,7 +38,7 @@ import {
   registerWithEmail,
   signOutUser
 } from "../services/firebase";
-import { cancelNativeAlarm, canScheduleExactAlarms, requestExactAlarmPermission, scheduleNativeAlarm } from "../services/nativeAlarm";
+import { addAlarmResponseListener, cancelNativeAlarm, canScheduleExactAlarms, requestExactAlarmPermission, scheduleNativeAlarm } from "../services/nativeAlarm";
 
 const PURPLE = "#4F378B";
 const LIGHT_PURPLE = "#EADDFF";
@@ -222,6 +222,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const { reminders, markedDates, updateReminder, addReminder, deleteReminder, resetPrototype, resetStats, refreshFromCloud, syncNow, loaded } = useReminders();
   const confettiRef = useRef(null);
   const remindersRef = useRef(reminders);
+  const handlePromptResponseRef = useRef(null);
   const lastCloudUserRef = useRef(null);
   const [tab, setTab] = useState("home");
   const [tabDirection, setTabDirection] = useState("forward");
@@ -564,9 +565,20 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
       }
     }) : null;
 
+    // Listen for Yes / No / Confirmed taps from the native AlarmActivity full-screen UI.
+    // The native side broadcasts the result as an ALARM_RESPONSE intent → module event.
+    const unsubAlarmResponse = addAlarmResponseListener(({ reminderId, mode }) => {
+      const reminder = remindersRef.current.find((item) => item.id === reminderId);
+      if (!reminder) return;
+      // Use the ref so we always have the latest handlePromptResponse (avoids stale closure)
+      const completed = mode === "yes" || mode === "confirmed";
+      handlePromptResponseRef.current?.(reminder, completed, mode);
+    });
+
     return () => {
       if (received) received.remove();
       if (responded) responded.remove();
+      unsubAlarmResponse();
     };
   }, []);
 
@@ -651,6 +663,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     }
     setReminding(null);
   };
+  // Keep the ref up to date so the alarm listener always calls the latest version
+  handlePromptResponseRef.current = handlePromptResponse;
 
   const restoreDeletedReminder = async () => {
     if (!undoDelete) {

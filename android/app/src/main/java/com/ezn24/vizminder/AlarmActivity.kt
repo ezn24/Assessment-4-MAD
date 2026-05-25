@@ -28,7 +28,7 @@ class AlarmActivity : Activity() {
 
     reminderId = intent.getStringExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID) ?: "reminder"
     val title = intent.getStringExtra(AlarmSchedulerModule.EXTRA_TITLE) ?: "Reminder"
-    val body = intent.getStringExtra(AlarmSchedulerModule.EXTRA_BODY) ?: "Time to check this reminder."
+    val body = intent.getStringExtra(AlarmSchedulerModule.EXTRA_BODY) ?: ""
     val fireTime = intent.getStringExtra(AlarmSchedulerModule.EXTRA_FIRE_TIME) ?: ""
     val emoji = intent.getStringExtra(AlarmSchedulerModule.EXTRA_EMOJI) ?: "\uD83D\uDD14"
 
@@ -65,7 +65,7 @@ class AlarmActivity : Activity() {
   private fun buildReminderView(title: String, body: String, fireTime: String, emoji: String): LinearLayout {
     val prefs = getSharedPreferences("VizminderPrefs", Context.MODE_PRIVATE)
     val isDark = prefs.getBoolean("isDarkTheme", false)
-    
+
     val primary = safeParseColor(prefs.getString("primaryHex", "") ?: "", if (isDark) Color.rgb(208, 188, 255) else Color.rgb(79, 55, 139))
     val secondary = safeParseColor(prefs.getString("secondaryHex", "") ?: "", if (isDark) Color.rgb(79, 55, 139) else Color.rgb(234, 221, 255))
     val surface = safeParseColor(prefs.getString("backgroundHex", "") ?: "", if (isDark) Color.rgb(20, 18, 24) else Color.rgb(255, 251, 254))
@@ -80,7 +80,7 @@ class AlarmActivity : Activity() {
       setBackgroundColor(surface)
       layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
- 
+
     val appName = TextView(this).apply {
       text = "VizMinder"
       textSize = 30f
@@ -89,7 +89,7 @@ class AlarmActivity : Activity() {
       setTextColor(textColor)
     }
     root.addView(appName, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
- 
+
     val visual = TextView(this).apply {
       text = emoji
       textSize = 42f
@@ -98,9 +98,10 @@ class AlarmActivity : Activity() {
       includeFontPadding = false
     }
     root.addView(visual, LinearLayout.LayoutParams(dp(104), dp(104)).apply { topMargin = dp(14) })
- 
+
+    // spacer
     root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
- 
+
     val time = TextView(this).apply {
       text = "It is ${formatAlarmTime(fireTime)} now !"
       textSize = 28f
@@ -109,7 +110,7 @@ class AlarmActivity : Activity() {
       setTextColor(primary)
     }
     root.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
- 
+
     val question = TextView(this).apply {
       text = "Have you completed\n$title?"
       textSize = 22f
@@ -119,21 +120,41 @@ class AlarmActivity : Activity() {
       setPadding(0, dp(18), 0, dp(8))
     }
     root.addView(question, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
- 
+
+    // Show description if set
     if (body.isNotBlank()) {
       val bodyView = TextView(this).apply {
         text = body
         textSize = 14f
         gravity = Gravity.CENTER
         setTextColor(subtextColor)
-        setPadding(dp(18), 0, dp(18), 0)
-        maxLines = 2
+        setPadding(dp(18), 0, dp(18), dp(8))
+        maxLines = 3
       }
       root.addView(bodyView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
- 
+
+    // spacer
     root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
- 
+
+    // "I really did it" confirm button
+    val confirmButton = TextView(this).apply {
+      text = "I really did it"
+      textSize = 16f
+      typeface = Typeface.DEFAULT_BOLD
+      gravity = Gravity.CENTER
+      setTextColor(primary)
+      background = rounded(Color.TRANSPARENT, dp(22)).apply {
+        setStroke(dp(1), primary)
+      }
+      setOnClickListener { finishAlarm("confirmed") }
+    }
+    root.addView(confirmButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply {
+      marginStart = dp(42)
+      marginEnd = dp(42)
+      bottomMargin = dp(18)
+    })
+
     val actionRow = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER
@@ -144,45 +165,47 @@ class AlarmActivity : Activity() {
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
       background = oval(primary)
-      setOnClickListener { finishAlarm(false) }
+      setOnClickListener { finishAlarm("no") }
     }
+    // Fix: Yes button now correctly calls finishAlarm("yes") with the right colour
     val yesButton = TextView(this).apply {
       text = "\u2713"
       textSize = 42f
       gravity = Gravity.CENTER
-      setTextColor(Color.WHITE)
+      setTextColor(if (isDark) Color.rgb(29, 27, 32) else Color.WHITE)
       background = oval(secondary)
-      setOnClickListener { finishAlarm(false) }
+      setOnClickListener { finishAlarm("yes") }
     }
-    val confirmButton = TextView(this).apply {
-      text = "I really did it"
-      textSize = 16f
-      typeface = Typeface.DEFAULT_BOLD
-      gravity = Gravity.CENTER
-      setTextColor(primary)
-      background = rounded(Color.TRANSPARENT, dp(22)).apply {
-        setStroke(dp(1), primary)
-      }
-      setOnClickListener { finishAlarm(true) }
-    }
-    root.addView(confirmButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply {
-      marginStart = dp(42)
-      marginEnd = dp(42)
-      bottomMargin = dp(18)
-    })
     actionRow.addView(noButton, LinearLayout.LayoutParams(dp(104), dp(104)).apply { marginEnd = dp(24) })
     actionRow.addView(yesButton, LinearLayout.LayoutParams(dp(104), dp(104)).apply { marginStart = dp(24) })
     root.addView(actionRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
- 
+
     return root
   }
 
-  private fun finishAlarm(cancelFollowUps: Boolean) {
+  /**
+   * Dismiss the alarm, broadcast the user's response to React Native via
+   * the AlarmSchedulerModule so that prompt stats can be updated in storage.
+   *
+   * mode: "yes" | "no" | "confirmed"
+   */
+  private fun finishAlarm(mode: String) {
+    // Cancel the ongoing notification
     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.cancel(reminderId.hashCode())
-    if (cancelFollowUps) {
+
+    if (mode == "confirmed") {
       cancelFollowUpAlarms()
     }
+
+    // Broadcast the response to AlarmSchedulerModule so RN can record stats
+    val responseIntent = Intent(AlarmSchedulerModule.ACTION_ALARM_RESPONSE).apply {
+      setPackage(packageName)
+      putExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID, reminderId)
+      putExtra(AlarmSchedulerModule.EXTRA_ALARM_MODE, mode)
+    }
+    sendBroadcast(responseIntent)
+
     finishAndRemoveTask()
   }
 

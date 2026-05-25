@@ -2,19 +2,62 @@ package com.ezn24.vizminder
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.time.Instant
 
 class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
   override fun getName(): String = "AlarmScheduler"
+
+  // BroadcastReceiver that listens for responses from AlarmActivity (Yes / No / Confirmed)
+  private val responseReceiver = object : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+      if (intent.action != ACTION_ALARM_RESPONSE) return
+      val reminderId = intent.getStringExtra(EXTRA_REMINDER_ID) ?: return
+      val mode = intent.getStringExtra(EXTRA_ALARM_MODE) ?: return
+      val params = Arguments.createMap().apply {
+        putString("reminderId", reminderId)
+        putString("mode", mode)           // "yes" | "no" | "confirmed"
+      }
+      try {
+        reactContext
+          .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+          .emit("AlarmResponse", params)
+      } catch (_: Exception) { }
+    }
+  }
+
+  private var receiverRegistered = false
+
+  @ReactMethod
+  fun addListener(eventName: String) {
+    // Required for RN built-in event emitter; register receiver on first listener
+    if (!receiverRegistered) {
+      val filter = IntentFilter(ACTION_ALARM_RESPONSE)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        reactContext.registerReceiver(responseReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+      } else {
+        reactContext.registerReceiver(responseReceiver, filter)
+      }
+      receiverRegistered = true
+    }
+  }
+
+  @ReactMethod
+  fun removeListeners(count: Int) {
+    // No-op; receiver stays registered for the lifetime of the module
+  }
 
   @ReactMethod
   fun scheduleAlarm(reminderId: String, title: String, body: String, isoTime: String, repeatDaily: Boolean, ringtone: String, visualType: String, emoji: String, repeatUntil: String, followUpRemaining: Int, followUpIntervalMinutes: Int, soundEnabled: Boolean, vibrationEnabled: Boolean, promise: Promise) {
@@ -175,6 +218,7 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
 
   companion object {
     const val ACTION_FIRE_ALARM = "com.ezn24.vizminder.ACTION_FIRE_ALARM"
+    const val ACTION_ALARM_RESPONSE = "com.ezn24.vizminder.ALARM_RESPONSE"
     const val EXTRA_REMINDER_ID = "reminderId"
     const val EXTRA_TITLE = "title"
     const val EXTRA_BODY = "body"
@@ -188,5 +232,6 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
     const val EXTRA_FOLLOW_UP_INTERVAL_MINUTES = "followUpIntervalMinutes"
     const val EXTRA_SOUND_ENABLED = "soundEnabled"
     const val EXTRA_VIBRATION_ENABLED = "vibrationEnabled"
+    const val EXTRA_ALARM_MODE = "alarmMode"
   }
 }

@@ -1,6 +1,19 @@
-import { NativeModules, Platform } from "react-native";
+import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 
 const { AlarmScheduler } = NativeModules;
+// NativeEventEmitter wires up addListener / removeListeners on the Kotlin side
+const alarmEmitter = Platform.OS === "android" && AlarmScheduler ? new NativeEventEmitter(AlarmScheduler) : null;
+
+/**
+ * Subscribe to alarm button responses from the native AlarmActivity.
+ * Callback receives { reminderId: string, mode: "yes" | "no" | "confirmed" }.
+ * Returns an unsubscribe function.
+ */
+export function addAlarmResponseListener(callback) {
+  if (!alarmEmitter) return () => {};
+  const subscription = alarmEmitter.addListener("AlarmResponse", callback);
+  return () => subscription.remove();
+}
 
 export async function requestExactAlarmPermission() {
   if (Platform.OS !== "android" || !AlarmScheduler) {
