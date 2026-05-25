@@ -39,7 +39,7 @@ import {
   registerWithEmail,
   signOutUser
 } from "../services/firebase";
-import { addAlarmResponseListener, cancelNativeAlarm, canScheduleExactAlarms, requestExactAlarmPermission, scheduleNativeAlarm } from "../services/nativeAlarm";
+import { addAlarmResponseListener, cancelNativeAlarm, canScheduleExactAlarms, requestExactAlarmPermission, scheduleNativeAlarm, showNativeAlarmNow } from "../services/nativeAlarm";
 
 const PURPLE = "#4F378B";
 const LIGHT_PURPLE = "#EADDFF";
@@ -224,6 +224,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const confettiRef = useRef(null);
   const remindersRef = useRef(reminders);
   const handlePromptResponseRef = useRef(null);
+  const debugAlarmIdsRef = useRef(new Set());
   const lastCloudUserRef = useRef(null);
   const [tab, setTab] = useState("home");
   const [tabDirection, setTabDirection] = useState("forward");
@@ -573,7 +574,11 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
       if (!reminder) return;
       // Use the ref so we always have the latest handlePromptResponse (avoids stale closure)
       const completed = mode === "yes" || mode === "confirmed";
-      handlePromptResponseRef.current?.(reminder, completed, mode);
+      const isDebugAlarm = debugAlarmIdsRef.current.has(reminderId);
+      if (isDebugAlarm) {
+        debugAlarmIdsRef.current.delete(reminderId);
+      }
+      handlePromptResponseRef.current?.(isDebugAlarm ? { ...reminder, __debugPrompt: true } : reminder, completed, mode);
     });
 
     return () => {
@@ -666,6 +671,23 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   };
   // Keep the ref up to date so the alarm listener always calls the latest version
   handlePromptResponseRef.current = handlePromptResponse;
+
+  const showTestReminder = async (reminder) => {
+    if (Platform.OS === "android") {
+      debugAlarmIdsRef.current.add(reminder.id);
+      const shown = await showNativeAlarmNow({
+        ...reminder,
+        notificationSound: settings.notificationSound !== false,
+        notificationVibration: settings.notificationVibration !== false
+      }).catch(() => false);
+      if (shown) {
+        return;
+      }
+      debugAlarmIdsRef.current.delete(reminder.id);
+      setMessage("Native alarm test is unavailable. Showing in-app prompt.");
+    }
+    setReminding({ ...reminder, __debugPrompt: true });
+  };
 
   const restoreDeletedReminder = async () => {
     if (!undoDelete) {
@@ -871,7 +893,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   reminders={reminders}
                   loaded={loaded}
                   markedDates={markedDates}
-                  onTestReminder={(reminder) => setReminding({ ...reminder, __debugPrompt: true })}
+                  onTestReminder={showTestReminder}
                   showReminderDebugButton={settings.showReminderDebugButton}
                   isDark={isDark}
                   themeColors={themeColors}
@@ -1518,11 +1540,12 @@ function ReminderPrompt({ reminder, isDark, palette, onNo, onYes, onConfirm }) {
     <Animatable.View animation="zoomInUp" duration={420} style={[styles.reminderScreen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle isDark={isDark}>VizMinder</ScreenTitle>
       <Animatable.View animation="pulse" iterationCount="infinite" duration={1800} useNativeDriver>
-        <VisualCue reminder={reminder} size={104} iconSize={48} palette={colors} />
+        <VisualCue reminder={reminder} size={128} iconSize={58} palette={colors} />
       </Animatable.View>
       <View style={styles.reminderCopy}>
         <Text style={[styles.reminderHeadline, { color: colors.primary }]}>It is {format(parseISO(reminder.scheduledAt), "hh:mm")} now !</Text>
-        <Text style={[styles.reminderQuestion, { color: colors.primary }]}>Have you completed {reminder.title}?</Text>
+        <Text style={[styles.reminderQuestion, { color: colors.primary }]}>Have you completed? {"\n\n"}</Text>
+        <Text style={[styles.reminderTitle, { color: colors.primary }]}>{reminder.title}{"\n"}</Text>
         {reminder.description ? (
           <Text style={[styles.reminderDescription, { color: colors.onSurfaceVariant }]}>{reminder.description}</Text>
         ) : null}
@@ -3028,7 +3051,7 @@ async function scheduleReminderNotification(reminder, settings = DEFAULT_SETTING
   return Notifications.scheduleNotificationAsync({
     content: {
       title: `VizMinder: ${reminder.title.trim() || "Reminder"}`,
-      body: reminder.description?.trim() || "Time to check this reminder.",
+      body: reminder.description?.trim() || "",
       sound: settings.notificationSound === false || reminder.priority === "low" ? null : "default",
       priority:
         reminder.priority === "low"
@@ -4104,6 +4127,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center"
   },
+  reminderTitle: {
+    color: PURPLE,
+    fontFamily: FONT_BOLD,
+    fontSize: 40,
+    fontWeight: "300",
+    textAlign: "center"
+  },
   reminderDescription: {
     fontFamily: FONT_REGULAR,
     fontSize: 15,
@@ -4117,7 +4147,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: 8,
-    marginTop: 24,
+    marginTop: 14,
     minHeight: 44,
     paddingHorizontal: 18
   },

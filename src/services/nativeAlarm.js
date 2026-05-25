@@ -49,12 +49,38 @@ export async function scheduleNativeAlarm(reminder) {
   return AlarmScheduler.scheduleAlarm(
     reminder.id,
     reminder.title?.trim() || "Reminder",
-    reminder.description?.trim() || "Time to check this reminder.",
+    reminder.description?.trim() || "",
     fireAt.toISOString(),
     Boolean(reminder.repeat),
     reminder.ringtone || "alarm",
     reminder.visualType || (reminder.imageUri ? "image" : "icon"),
+    reminder.icon || "bell-outline",
     reminder.emoji || "\u{1F514}",
+    reminder.imageUri || "",
+    reminder.repeatUntil || "",
+    reminder.followUpEnabled ? Number(reminder.followUpCount || 0) : 0,
+    Number(reminder.followUpIntervalMinutes || 5),
+    reminder.notificationSound !== false,
+    reminder.notificationVibration !== false
+  );
+}
+
+export async function showNativeAlarmNow(reminder) {
+  if (Platform.OS !== "android" || !AlarmScheduler || !reminder) {
+    return false;
+  }
+  const fireAt = new Date();
+  return AlarmScheduler.showAlarmNow(
+    reminder.id,
+    reminder.title?.trim() || "Reminder",
+    reminder.description?.trim() || "",
+    fireAt.toISOString(),
+    Boolean(reminder.repeat),
+    reminder.ringtone || "alarm",
+    reminder.visualType || (reminder.imageUri ? "image" : "icon"),
+    reminder.icon || "bell-outline",
+    reminder.emoji || "\u{1F514}",
+    reminder.imageUri || "",
     reminder.repeatUntil || "",
     reminder.followUpEnabled ? Number(reminder.followUpCount || 0) : 0,
     Number(reminder.followUpIntervalMinutes || 5),

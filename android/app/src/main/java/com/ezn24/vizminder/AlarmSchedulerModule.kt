@@ -60,7 +60,7 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
   }
 
   @ReactMethod
-  fun scheduleAlarm(reminderId: String, title: String, body: String, isoTime: String, repeatDaily: Boolean, ringtone: String, visualType: String, emoji: String, repeatUntil: String, followUpRemaining: Int, followUpIntervalMinutes: Int, soundEnabled: Boolean, vibrationEnabled: Boolean, promise: Promise) {
+  fun scheduleAlarm(reminderId: String, title: String, body: String, isoTime: String, repeatDaily: Boolean, ringtone: String, visualType: String, icon: String, emoji: String, imageUri: String, repeatUntil: String, followUpRemaining: Int, followUpIntervalMinutes: Int, soundEnabled: Boolean, vibrationEnabled: Boolean, promise: Promise) {
     try {
       val fireAt = Instant.parse(isoTime).toEpochMilli()
       if (fireAt <= System.currentTimeMillis()) {
@@ -89,7 +89,9 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
         putExtra(EXTRA_REPEAT_DAILY, repeatDaily)
         putExtra(EXTRA_RINGTONE, ringtone)
         putExtra(EXTRA_VISUAL_TYPE, visualType)
+        putExtra(EXTRA_ICON, icon)
         putExtra(EXTRA_EMOJI, emoji)
+        putExtra(EXTRA_IMAGE_URI, imageUri)
         putExtra(EXTRA_REPEAT_UNTIL, repeatUntil)
         putExtra(EXTRA_FOLLOW_UP_REMAINING, followUpRemaining)
         putExtra(EXTRA_FOLLOW_UP_INTERVAL_MINUTES, followUpIntervalMinutes)
@@ -112,7 +114,9 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
         putExtra(EXTRA_REPEAT_DAILY, repeatDaily)
         putExtra(EXTRA_RINGTONE, ringtone)
         putExtra(EXTRA_VISUAL_TYPE, visualType)
+        putExtra(EXTRA_ICON, icon)
         putExtra(EXTRA_EMOJI, emoji)
+        putExtra(EXTRA_IMAGE_URI, imageUri)
         putExtra(EXTRA_REPEAT_UNTIL, repeatUntil)
         putExtra(EXTRA_FOLLOW_UP_REMAINING, followUpRemaining)
         putExtra(EXTRA_FOLLOW_UP_INTERVAL_MINUTES, followUpIntervalMinutes)
@@ -130,6 +134,34 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
       promise.resolve(true)
     } catch (error: Exception) {
       promise.reject("ALARM_SCHEDULE_FAILED", error)
+    }
+  }
+
+  @ReactMethod
+  fun showAlarmNow(reminderId: String, title: String, body: String, isoTime: String, repeatDaily: Boolean, ringtone: String, visualType: String, icon: String, emoji: String, imageUri: String, repeatUntil: String, followUpRemaining: Int, followUpIntervalMinutes: Int, soundEnabled: Boolean, vibrationEnabled: Boolean, promise: Promise) {
+    try {
+      val showIntent = Intent(reactContext, AlarmActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        putExtra(EXTRA_REMINDER_ID, reminderId)
+        putExtra(EXTRA_TITLE, title)
+        putExtra(EXTRA_BODY, body)
+        putExtra(EXTRA_FIRE_TIME, isoTime)
+        putExtra(EXTRA_REPEAT_DAILY, repeatDaily)
+        putExtra(EXTRA_RINGTONE, ringtone)
+        putExtra(EXTRA_VISUAL_TYPE, visualType)
+        putExtra(EXTRA_ICON, icon)
+        putExtra(EXTRA_EMOJI, emoji)
+        putExtra(EXTRA_IMAGE_URI, imageUri)
+        putExtra(EXTRA_REPEAT_UNTIL, repeatUntil)
+        putExtra(EXTRA_FOLLOW_UP_REMAINING, followUpRemaining)
+        putExtra(EXTRA_FOLLOW_UP_INTERVAL_MINUTES, followUpIntervalMinutes)
+        putExtra(EXTRA_SOUND_ENABLED, soundEnabled)
+        putExtra(EXTRA_VIBRATION_ENABLED, vibrationEnabled)
+      }
+      reactContext.startActivity(showIntent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("ALARM_SHOW_FAILED", error)
     }
   }
 
@@ -226,7 +258,9 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
     const val EXTRA_REPEAT_DAILY = "repeatDaily"
     const val EXTRA_RINGTONE = "ringtone"
     const val EXTRA_VISUAL_TYPE = "visualType"
+    const val EXTRA_ICON = "icon"
     const val EXTRA_EMOJI = "emoji"
+    const val EXTRA_IMAGE_URI = "imageUri"
     const val EXTRA_REPEAT_UNTIL = "repeatUntil"
     const val EXTRA_FOLLOW_UP_REMAINING = "followUpRemaining"
     const val EXTRA_FOLLOW_UP_INTERVAL_MINUTES = "followUpIntervalMinutes"

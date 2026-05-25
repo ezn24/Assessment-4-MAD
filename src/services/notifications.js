@@ -62,7 +62,7 @@ export async function scheduleReminder(reminder) {
     return await Notifications.scheduleNotificationAsync({
       content: {
         title: `VizMinder: ${reminder.title}`,
-        body: reminder.description || "Time to check your visual reminder.",
+        body: reminder.description?.trim() || "",
         sound: "default",
         priority: Notifications.AndroidNotificationPriority.MAX,
         data: { reminderId: reminder.id }

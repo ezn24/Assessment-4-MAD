@@ -4,16 +4,21 @@ import android.app.Activity
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.view.WindowManager
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.time.Instant
@@ -30,7 +35,10 @@ class AlarmActivity : Activity() {
     val title = intent.getStringExtra(AlarmSchedulerModule.EXTRA_TITLE) ?: "Reminder"
     val body = intent.getStringExtra(AlarmSchedulerModule.EXTRA_BODY) ?: ""
     val fireTime = intent.getStringExtra(AlarmSchedulerModule.EXTRA_FIRE_TIME) ?: ""
+    val visualType = intent.getStringExtra(AlarmSchedulerModule.EXTRA_VISUAL_TYPE) ?: "icon"
+    val icon = intent.getStringExtra(AlarmSchedulerModule.EXTRA_ICON) ?: "bell-outline"
     val emoji = intent.getStringExtra(AlarmSchedulerModule.EXTRA_EMOJI) ?: "\uD83D\uDD14"
+    val imageUri = intent.getStringExtra(AlarmSchedulerModule.EXTRA_IMAGE_URI) ?: ""
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(true)
@@ -50,7 +58,7 @@ class AlarmActivity : Activity() {
         WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
         WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
     )
-    setContentView(buildReminderView(title, body, fireTime, emoji))
+    setContentView(buildReminderView(title, body, fireTime, visualType, icon, emoji, imageUri))
   }
 
   private fun safeParseColor(hex: String, defaultColor: Int): Int {
@@ -62,7 +70,7 @@ class AlarmActivity : Activity() {
     }
   }
 
-  private fun buildReminderView(title: String, body: String, fireTime: String, emoji: String): LinearLayout {
+  private fun buildReminderView(title: String, body: String, fireTime: String, visualType: String, icon: String, emoji: String, imageUri: String): LinearLayout {
     val prefs = getSharedPreferences("VizminderPrefs", Context.MODE_PRIVATE)
     val isDark = prefs.getBoolean("isDarkTheme", false)
 
@@ -72,6 +80,8 @@ class AlarmActivity : Activity() {
     val visualBg = safeParseColor(prefs.getString("secondaryHex", "") ?: "", if (isDark) Color.rgb(79, 55, 139) else Color.rgb(234, 221, 255))
     val textColor = safeParseColor(prefs.getString("textColorHex", "") ?: "", if (isDark) Color.rgb(230, 224, 233) else Color.rgb(29, 27, 32))
     val subtextColor = safeParseColor(prefs.getString("subtextColorHex", "") ?: "", if (isDark) Color.rgb(202, 196, 208) else Color.rgb(73, 69, 79))
+
+    val iconTypeface = runCatching { Typeface.createFromAsset(assets, "fonts/MaterialCommunityIcons.ttf") }.getOrNull()
 
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
@@ -90,14 +100,34 @@ class AlarmActivity : Activity() {
     }
     root.addView(appName, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
 
-    val visual = TextView(this).apply {
-      text = emoji
-      textSize = 42f
+    val visualContainer = LinearLayout(this).apply {
       gravity = Gravity.CENTER
       background = rounded(visualBg, dp(30))
-      includeFontPadding = false
+      clipToOutline = true
     }
-    root.addView(visual, LinearLayout.LayoutParams(dp(104), dp(104)).apply { topMargin = dp(14) })
+    if (visualType == "image" && imageUri.isNotBlank()) {
+      val image = ImageView(this).apply {
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        background = rounded(visualBg, dp(30))
+        clipToOutline = true
+        setImageURI(Uri.parse(imageUri))
+      }
+      visualContainer.addView(image, LinearLayout.LayoutParams(dp(128), dp(128)))
+    } else {
+      val visual = TextView(this).apply {
+        text = if (visualType == "emoji") emoji else iconGlyph(icon)
+        textSize = if (visualType == "emoji") 54f else 60f
+        gravity = Gravity.CENTER
+        setTextColor(primary)
+        if (visualType != "emoji" && iconTypeface != null) {
+          typeface = iconTypeface
+        }
+        includeFontPadding = false
+      }
+      visualContainer.addView(visual, LinearLayout.LayoutParams(dp(128), dp(128)))
+    }
+    root.addView(visualContainer, LinearLayout.LayoutParams(dp(128), dp(128)).apply { topMargin = dp(14) })
+    startPulse(visualContainer)
 
     // spacer
     root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
@@ -112,34 +142,41 @@ class AlarmActivity : Activity() {
     root.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
     val question = TextView(this).apply {
-      text = "Have you completed\n$title?"
+      text = "Have you completed the task?"
       textSize = 22f
       typeface = Typeface.DEFAULT_BOLD
       gravity = Gravity.CENTER
       setTextColor(primary)
-      setPadding(0, dp(18), 0, dp(8))
+      setPadding(dp(16), dp(18), dp(16), dp(18))
+    }
+    val title = TextView(this).apply {
+      text = title
+      textSize = 40f
+      typeface = Typeface.DEFAULT_BOLD
+      gravity = Gravity.CENTER
+      setTextColor(primary)
+      setPadding(dp(16), dp(18), dp(16), dp(18))
     }
     root.addView(question, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    root.addView(title, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
     // Show description if set
     if (body.isNotBlank()) {
       val bodyView = TextView(this).apply {
         text = body
-        textSize = 14f
+        textSize = 18f
         gravity = Gravity.CENTER
-        setTextColor(subtextColor)
+        typeface = Typeface.DEFAULT_BOLD
+        setTextColor(primary)
         setPadding(dp(18), 0, dp(18), dp(8))
         maxLines = 3
       }
       root.addView(bodyView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
-    // spacer
-    root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
-
     // "I really did it" confirm button
     val confirmButton = TextView(this).apply {
-      text = "I really did it"
+      text = "🧠 I really did it"
       textSize = 16f
       typeface = Typeface.DEFAULT_BOLD
       gravity = Gravity.CENTER
@@ -152,16 +189,20 @@ class AlarmActivity : Activity() {
     root.addView(confirmButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply {
       marginStart = dp(42)
       marginEnd = dp(42)
-      bottomMargin = dp(18)
+      topMargin = dp(12)
     })
+
+    // spacer
+    root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
 
     val actionRow = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER
     }
     val noButton = TextView(this).apply {
-      text = "\u00D7"
-      textSize = 42f
+      text = iconGlyph("close")
+      textSize = 48f
+      if (iconTypeface != null) typeface = iconTypeface
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
       background = oval(primary)
@@ -169,8 +210,9 @@ class AlarmActivity : Activity() {
     }
     // Fix: Yes button now correctly calls finishAlarm("yes") with the right colour
     val yesButton = TextView(this).apply {
-      text = "\u2713"
-      textSize = 42f
+      text = iconGlyph("check")
+      textSize = 48f
+      if (iconTypeface != null) typeface = iconTypeface
       gravity = Gravity.CENTER
       setTextColor(if (isDark) Color.rgb(29, 27, 32) else Color.WHITE)
       background = oval(secondary)
@@ -233,6 +275,54 @@ class AlarmActivity : Activity() {
       DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(fireTime))
     } catch (_: Exception) {
       DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.now())
+    }
+  }
+
+  private fun startPulse(target: android.view.View) {
+    val scaleX = ObjectAnimator.ofFloat(target, "scaleX", 1f, 1.06f, 1f)
+    val scaleY = ObjectAnimator.ofFloat(target, "scaleY", 1f, 1.06f, 1f)
+    AnimatorSet().apply {
+      playTogether(scaleX, scaleY)
+      duration = 1800L
+      interpolator = AccelerateDecelerateInterpolator()
+      addListener(object : android.animation.AnimatorListenerAdapter() {
+        override fun onAnimationEnd(animation: android.animation.Animator) {
+          target.post { startPulse(target) }
+        }
+      })
+      start()
+    }
+  }
+
+  private fun iconGlyph(icon: String): String {
+    return when (icon) {
+      "bell-outline" -> String(Character.toChars(983196))
+      "key" -> String(Character.toChars(983814))
+      "fire" -> String(Character.toChars(983608))
+      "tshirt-crew" -> String(Character.toChars(985723))
+      "pill" -> String(Character.toChars(984066))
+      "wallet-outline" -> String(Character.toChars(986077))
+      "shoe-sneaker" -> String(Character.toChars(988616))
+      "book-open-page-variant" -> String(Character.toChars(984538))
+      "water" -> String(Character.toChars(984460))
+      "food-apple-outline" -> String(Character.toChars(986244))
+      "coffee-outline" -> String(Character.toChars(984778))
+      "toothbrush-paste" -> String(Character.toChars(987434))
+      "trash-can-outline" -> String(Character.toChars(985722))
+      "email-outline" -> String(Character.toChars(983536))
+      "phone-outline" -> String(Character.toChars(986608))
+      "cart-outline" -> String(Character.toChars(983313))
+      "home-outline" -> String(Character.toChars(984737))
+      "briefcase-outline" -> String(Character.toChars(985108))
+      "calendar-check-outline" -> String(Character.toChars(986180))
+      "run" -> String(Character.toChars(984846))
+      "bed-outline" -> String(Character.toChars(983193))
+      "car-outline" -> String(Character.toChars(988397))
+      "umbrella-outline" -> String(Character.toChars(984395))
+      "lightbulb-outline" -> String(Character.toChars(983862))
+      "close" -> String(Character.toChars(983382))
+      "check" -> String(Character.toChars(983340))
+      else -> String(Character.toChars(983196))
     }
   }
 

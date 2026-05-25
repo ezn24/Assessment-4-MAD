@@ -20,12 +20,14 @@ class AlarmReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     val reminderId = intent.getStringExtra(AlarmSchedulerModule.EXTRA_REMINDER_ID) ?: "reminder"
     val title = intent.getStringExtra(AlarmSchedulerModule.EXTRA_TITLE) ?: "VizMinder reminder"
-    val body = intent.getStringExtra(AlarmSchedulerModule.EXTRA_BODY) ?: "Time to check this reminder."
+    val body = intent.getStringExtra(AlarmSchedulerModule.EXTRA_BODY) ?: ""
     val fireTime = intent.getStringExtra(AlarmSchedulerModule.EXTRA_FIRE_TIME) ?: ""
     val repeatDaily = intent.getBooleanExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, false)
     val ringtone = intent.getStringExtra(AlarmSchedulerModule.EXTRA_RINGTONE) ?: "alarm"
     val visualType = intent.getStringExtra(AlarmSchedulerModule.EXTRA_VISUAL_TYPE) ?: "icon"
+    val icon = intent.getStringExtra(AlarmSchedulerModule.EXTRA_ICON) ?: "bell-outline"
     val emoji = intent.getStringExtra(AlarmSchedulerModule.EXTRA_EMOJI) ?: "\uD83D\uDD14"
+    val imageUri = intent.getStringExtra(AlarmSchedulerModule.EXTRA_IMAGE_URI) ?: ""
     val repeatUntil = intent.getStringExtra(AlarmSchedulerModule.EXTRA_REPEAT_UNTIL) ?: ""
     val followUpRemaining = intent.getIntExtra(AlarmSchedulerModule.EXTRA_FOLLOW_UP_REMAINING, 0)
     val followUpIntervalMinutes = intent.getIntExtra(AlarmSchedulerModule.EXTRA_FOLLOW_UP_INTERVAL_MINUTES, 5).coerceAtLeast(1)
@@ -46,7 +48,9 @@ class AlarmReceiver : BroadcastReceiver() {
       putExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, repeatDaily)
       putExtra(AlarmSchedulerModule.EXTRA_RINGTONE, ringtone)
       putExtra(AlarmSchedulerModule.EXTRA_VISUAL_TYPE, visualType)
+      putExtra(AlarmSchedulerModule.EXTRA_ICON, icon)
       putExtra(AlarmSchedulerModule.EXTRA_EMOJI, emoji)
+      putExtra(AlarmSchedulerModule.EXTRA_IMAGE_URI, imageUri)
       putExtra(AlarmSchedulerModule.EXTRA_REPEAT_UNTIL, repeatUntil)
       putExtra(AlarmSchedulerModule.EXTRA_FOLLOW_UP_REMAINING, followUpRemaining)
       putExtra(AlarmSchedulerModule.EXTRA_FOLLOW_UP_INTERVAL_MINUTES, followUpIntervalMinutes)
@@ -81,27 +85,27 @@ class AlarmReceiver : BroadcastReceiver() {
     wakeForAlarm(context)
     context.startActivity(alarmIntent)
     if (followUpRemaining > 0) {
-      scheduleFollowUpAlarm(context, reminderId, title, body, ringtone, visualType, emoji, repeatUntil, repeatDaily, followUpRemaining - 1, followUpIntervalMinutes, soundEnabled, vibrationEnabled)
+      scheduleFollowUpAlarm(context, reminderId, title, body, ringtone, visualType, icon, emoji, imageUri, repeatUntil, repeatDaily, followUpRemaining - 1, followUpIntervalMinutes, soundEnabled, vibrationEnabled)
     } else if (repeatDaily && isBeforeRepeatUntil(repeatUntil)) {
-      scheduleNextDailyAlarm(context, reminderId, title, body, ringtone, visualType, emoji, repeatUntil, soundEnabled, vibrationEnabled)
+      scheduleNextDailyAlarm(context, reminderId, title, body, ringtone, visualType, icon, emoji, imageUri, repeatUntil, soundEnabled, vibrationEnabled)
     }
   }
 
-  private fun scheduleFollowUpAlarm(context: Context, reminderId: String, title: String, body: String, ringtone: String, visualType: String, emoji: String, repeatUntil: String, repeatDaily: Boolean, followUpRemaining: Int, followUpIntervalMinutes: Int, soundEnabled: Boolean, vibrationEnabled: Boolean) {
+  private fun scheduleFollowUpAlarm(context: Context, reminderId: String, title: String, body: String, ringtone: String, visualType: String, icon: String, emoji: String, imageUri: String, repeatUntil: String, repeatDaily: Boolean, followUpRemaining: Int, followUpIntervalMinutes: Int, soundEnabled: Boolean, vibrationEnabled: Boolean) {
     val next = System.currentTimeMillis() + followUpIntervalMinutes * 60_000L
-    scheduleAlarmAt(context, "$reminderId-follow-$followUpRemaining", reminderId, title, body, ringtone, visualType, emoji, repeatUntil, repeatDaily, followUpRemaining, followUpIntervalMinutes, next, soundEnabled, vibrationEnabled)
+    scheduleAlarmAt(context, "$reminderId-follow-$followUpRemaining", reminderId, title, body, ringtone, visualType, icon, emoji, imageUri, repeatUntil, repeatDaily, followUpRemaining, followUpIntervalMinutes, next, soundEnabled, vibrationEnabled)
   }
 
-  private fun scheduleNextDailyAlarm(context: Context, reminderId: String, title: String, body: String, ringtone: String, visualType: String, emoji: String, repeatUntil: String, soundEnabled: Boolean, vibrationEnabled: Boolean) {
+  private fun scheduleNextDailyAlarm(context: Context, reminderId: String, title: String, body: String, ringtone: String, visualType: String, icon: String, emoji: String, imageUri: String, repeatUntil: String, soundEnabled: Boolean, vibrationEnabled: Boolean) {
     val next = Calendar.getInstance().apply {
       timeInMillis = System.currentTimeMillis()
       add(Calendar.DATE, 1)
     }.timeInMillis
     if (!isBeforeRepeatUntil(repeatUntil, next)) return
-    scheduleAlarmAt(context, reminderId, reminderId, title, body, ringtone, visualType, emoji, repeatUntil, true, 0, 5, next, soundEnabled, vibrationEnabled)
+    scheduleAlarmAt(context, reminderId, reminderId, title, body, ringtone, visualType, icon, emoji, imageUri, repeatUntil, true, 0, 5, next, soundEnabled, vibrationEnabled)
   }
 
-  private fun scheduleAlarmAt(context: Context, requestKey: String, reminderId: String, title: String, body: String, ringtone: String, visualType: String, emoji: String, repeatUntil: String, repeatDaily: Boolean, followUpRemaining: Int, followUpIntervalMinutes: Int, next: Long, soundEnabled: Boolean, vibrationEnabled: Boolean) {
+  private fun scheduleAlarmAt(context: Context, requestKey: String, reminderId: String, title: String, body: String, ringtone: String, visualType: String, icon: String, emoji: String, imageUri: String, repeatUntil: String, repeatDaily: Boolean, followUpRemaining: Int, followUpIntervalMinutes: Int, next: Long, soundEnabled: Boolean, vibrationEnabled: Boolean) {
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
     val receiverIntent = Intent(context, AlarmReceiver::class.java).apply {
       action = AlarmSchedulerModule.ACTION_FIRE_ALARM
@@ -112,7 +116,9 @@ class AlarmReceiver : BroadcastReceiver() {
       putExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, repeatDaily)
       putExtra(AlarmSchedulerModule.EXTRA_RINGTONE, ringtone)
       putExtra(AlarmSchedulerModule.EXTRA_VISUAL_TYPE, visualType)
+      putExtra(AlarmSchedulerModule.EXTRA_ICON, icon)
       putExtra(AlarmSchedulerModule.EXTRA_EMOJI, emoji)
+      putExtra(AlarmSchedulerModule.EXTRA_IMAGE_URI, imageUri)
       putExtra(AlarmSchedulerModule.EXTRA_REPEAT_UNTIL, repeatUntil)
       putExtra(AlarmSchedulerModule.EXTRA_FOLLOW_UP_REMAINING, followUpRemaining)
       putExtra(AlarmSchedulerModule.EXTRA_FOLLOW_UP_INTERVAL_MINUTES, followUpIntervalMinutes)
@@ -134,7 +140,9 @@ class AlarmReceiver : BroadcastReceiver() {
       putExtra(AlarmSchedulerModule.EXTRA_REPEAT_DAILY, repeatDaily)
       putExtra(AlarmSchedulerModule.EXTRA_RINGTONE, ringtone)
       putExtra(AlarmSchedulerModule.EXTRA_VISUAL_TYPE, visualType)
+      putExtra(AlarmSchedulerModule.EXTRA_ICON, icon)
       putExtra(AlarmSchedulerModule.EXTRA_EMOJI, emoji)
+      putExtra(AlarmSchedulerModule.EXTRA_IMAGE_URI, imageUri)
       putExtra(AlarmSchedulerModule.EXTRA_REPEAT_UNTIL, repeatUntil)
       putExtra(AlarmSchedulerModule.EXTRA_FOLLOW_UP_REMAINING, followUpRemaining)
       putExtra(AlarmSchedulerModule.EXTRA_FOLLOW_UP_INTERVAL_MINUTES, followUpIntervalMinutes)
