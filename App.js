@@ -3,9 +3,10 @@ import { AppState, Appearance, useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SystemUI from "expo-system-ui";
 import { useMaterial3Theme } from "@pchmn/expo-material3-theme";
-import { MD3DarkTheme, MD3LightTheme, PaperProvider } from "react-native-paper";
+import { configureFonts, MD3DarkTheme, MD3LightTheme, PaperProvider } from "react-native-paper";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
+import { useFonts, Roboto_400Regular, Roboto_500Medium, Roboto_700Bold } from "@expo-google-fonts/roboto";
 import HomeScreen from "./src/screens/HomeScreen";
 import { darkTheme, lightTheme } from "./src/theme";
 
@@ -14,6 +15,7 @@ const DEFAULT_SETTINGS = {
   themeMode: "light",
   followSystemColors: true,
   showReminderDebugButton: false,
+  recordDebugPromptStats: false,
   reminderNotifications: true,
   notificationSound: true,
   fullScreenAlerts: true,
@@ -22,6 +24,11 @@ const DEFAULT_SETTINGS = {
 };
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Roboto_400Regular,
+    Roboto_500Medium,
+    Roboto_700Bold
+  });
   const hookScheme = useColorScheme();
   const [appearanceScheme, setAppearanceScheme] = useState(Appearance.getColorScheme() || hookScheme || "light");
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -83,13 +90,18 @@ export default function App() {
     return {
       ...basePaperTheme,
       ...baseTheme,
+      fonts: configureFonts({
+        config: {
+          fontFamily: fontsLoaded ? "Roboto_400Regular" : "sans-serif"
+        }
+      }),
       colors: {
         ...basePaperTheme.colors,
         ...baseTheme.colors,
         ...(settings.followSystemColors ? dynamicColors : {})
       }
     };
-  }, [isDark, materialTheme, settings.followSystemColors]);
+  }, [fontsLoaded, isDark, materialTheme, settings.followSystemColors]);
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(paperTheme.colors.background).catch(() => {});

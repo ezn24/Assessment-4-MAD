@@ -15,6 +15,7 @@
     "test:firebase-lab": "gcloud firebase test android run --type robo --app ./build/vizminder-a4.apk --device model=MediumPhone.arm,version=35,locale=en,orientation=portrait"
   },
   "dependencies": {
+    "@expo-google-fonts/roboto": "^0.4.3",
     "@expo/vector-icons": "^15.1.1",
     "@pchmn/expo-material3-theme": "^1.4.0",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -44,6 +45,7 @@
     "react-native-maps": "^1.27.2",
     "react-native-paper": "^5.15.2",
     "react-native-safe-area-context": "~5.6.2",
+    "react-native-svg": "15.15.3",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {

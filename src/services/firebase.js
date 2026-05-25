@@ -180,6 +180,20 @@ export async function syncRemindersToFirestore(userId, reminders) {
   return { synced: reminders.length };
 }
 
+export async function replaceRemindersInFirestore(userId, reminders) {
+  const services = getFirebaseServices();
+  if (!services || !userId || userId === "offline-user") {
+    return { skipped: true };
+  }
+  const snapshot = await getDocs(collection(services.db, "users", userId, "reminders"));
+  const keepIds = new Set(reminders.map((reminder) => reminder.id));
+  await Promise.all([
+    ...snapshot.docs.filter((item) => !keepIds.has(item.id)).map((item) => deleteDoc(item.ref)),
+    ...reminders.map((reminder) => setDoc(doc(services.db, "users", userId, "reminders", reminder.id), reminder))
+  ]);
+  return { synced: reminders.length, deleted: snapshot.docs.length - keepIds.size };
+}
+
 export async function saveReminderToFirestore(userId, reminder) {
   const services = getFirebaseServices();
   if (!services || !userId || userId === "offline-user") {

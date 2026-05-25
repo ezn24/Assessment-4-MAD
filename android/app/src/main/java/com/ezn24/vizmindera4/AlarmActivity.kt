@@ -1,8 +1,11 @@
 package com.ezn24.vizmindera4
 
 import android.app.Activity
+import android.app.AlarmManager
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -127,7 +130,7 @@ class AlarmActivity : Activity() {
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
       background = oval(primary)
-      setOnClickListener { finishAlarm() }
+      setOnClickListener { finishAlarm(false) }
     }
     val yesButton = TextView(this).apply {
       text = "\u2713"
@@ -135,8 +138,24 @@ class AlarmActivity : Activity() {
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
       background = oval(secondary)
-      setOnClickListener { finishAlarm() }
+      setOnClickListener { finishAlarm(false) }
     }
+    val confirmButton = TextView(this).apply {
+      text = "I really did it"
+      textSize = 16f
+      typeface = Typeface.DEFAULT_BOLD
+      gravity = Gravity.CENTER
+      setTextColor(primary)
+      background = rounded(Color.TRANSPARENT, dp(22)).apply {
+        setStroke(dp(1), primary)
+      }
+      setOnClickListener { finishAlarm(true) }
+    }
+    root.addView(confirmButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply {
+      marginStart = dp(42)
+      marginEnd = dp(42)
+      bottomMargin = dp(18)
+    })
     actionRow.addView(noButton, LinearLayout.LayoutParams(dp(104), dp(104)).apply { marginEnd = dp(24) })
     actionRow.addView(yesButton, LinearLayout.LayoutParams(dp(104), dp(104)).apply { marginStart = dp(24) })
     root.addView(actionRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -144,10 +163,32 @@ class AlarmActivity : Activity() {
     return root
   }
 
-  private fun finishAlarm() {
+  private fun finishAlarm(cancelFollowUps: Boolean) {
     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.cancel(reminderId.hashCode())
+    if (cancelFollowUps) {
+      cancelFollowUpAlarms()
+    }
     finishAndRemoveTask()
+  }
+
+  private fun cancelFollowUpAlarms() {
+    val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    for (remaining in 0..10) {
+      val requestKey = "$reminderId-follow-$remaining"
+      val pendingIntent = PendingIntent.getBroadcast(
+        this,
+        requestKey.hashCode(),
+        Intent(this, AlarmReceiver::class.java).apply {
+          action = AlarmSchedulerModule.ACTION_FIRE_ALARM
+        },
+        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+      )
+      if (pendingIntent != null) {
+        alarmManager.cancel(pendingIntent)
+        pendingIntent.cancel()
+      }
+    }
   }
 
   private fun formatAlarmTime(fireTime: String): String {

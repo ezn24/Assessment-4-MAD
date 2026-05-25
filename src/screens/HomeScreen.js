@@ -3,6 +3,7 @@ import {
   Alert,
   BackHandler,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -14,6 +15,7 @@ import {
 } from "react-native";
 import ConfettiCannon from "react-native-confetti-cannon";
 import * as Animatable from "react-native-animatable";
+import Svg, { Circle } from "react-native-svg";
 // expo-haptics adds native tactile feedback to completion, toggle, and delete actions.
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -55,6 +57,7 @@ const DEFAULT_SETTINGS = {
   themeMode: "light",
   followSystemColors: true,
   showReminderDebugButton: false,
+  recordDebugPromptStats: false,
   reminderNotifications: true,
   notificationSound: true,
   fullScreenAlerts: true,
@@ -67,8 +70,13 @@ const RINGTONE_OPTIONS = [
   ["ringtone", "Phone ringtone"],
   ["silent", "Silent visual only"]
 ];
+const TAB_ORDER = ["home", "schedule", "stats", "account", "settings"];
 const FOLLOW_UP_COUNTS = [0, 1, 2, 3, 5, 10];
 const FOLLOW_UP_INTERVALS = [1, 3, 5, 10, 15, 30];
+const FONT_REGULAR = Platform.OS === "android" ? "Roboto_400Regular" : undefined;
+const FONT_MEDIUM = Platform.OS === "android" ? "Roboto_500Medium" : undefined;
+const FONT_SEMIBOLD = Platform.OS === "android" ? "Roboto_500Medium" : undefined;
+const FONT_BOLD = Platform.OS === "android" ? "Roboto_700Bold" : undefined;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -166,6 +174,9 @@ function createDraftReminder() {
     followUpEnabled: false,
     followUpCount: 0,
     followUpIntervalMinutes: 5,
+    promptYesCount: 0,
+    promptNoCount: 0,
+    promptConfirmedCount: 0,
     ringtone: "alarm",
     important: true,
     completed: false,
@@ -175,11 +186,12 @@ function createDraftReminder() {
 }
 
 export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, onUpdateSettings, isDarkOverride = null, themeColors = {} }) {
-  const { reminders, markedDates, updateReminder, addReminder, deleteReminder, resetPrototype, refreshFromCloud, syncNow, loaded } = useReminders();
+  const { reminders, markedDates, updateReminder, addReminder, deleteReminder, resetPrototype, resetStats, refreshFromCloud, syncNow, loaded } = useReminders();
   const confettiRef = useRef(null);
   const remindersRef = useRef(reminders);
   const lastCloudUserRef = useRef(null);
   const [tab, setTab] = useState("home");
+  const [tabDirection, setTabDirection] = useState("forward");
   const [editing, setEditing] = useState(null);
   const [editMode, setEditMode] = useState("edit");
   const [reminding, setReminding] = useState(null);
@@ -196,6 +208,16 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const firstReminder = reminders[0];
   const activeReminder = reminding || firstReminder;
   const completedCount = useMemo(() => reminders.filter((item) => item.completed).length, [reminders]);
+
+  const handleTabChange = (nextTab) => {
+    if (nextTab === tab) {
+      return;
+    }
+    const currentIndex = TAB_ORDER.indexOf(tab);
+    const nextIndex = TAB_ORDER.indexOf(nextTab);
+    setTabDirection(nextIndex > currentIndex ? "forward" : "back");
+    setTab(nextTab);
+  };
 
   useEffect(() => {
     remindersRef.current = reminders;
@@ -290,15 +312,33 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     };
   }, []);
 
-  const handlePromptResponse = async (reminder, completed) => {
+  const handlePromptResponse = async (reminder, completed, mode = completed ? "yes" : "no") => {
+    if (reminder.__debugPrompt && !settings.recordDebugPromptStats) {
+      setReminding(null);
+      setMessage("Debug prompt closed. Stats were not recorded.");
+      return;
+    }
     if (reminder.notificationId) {
       Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => {});
     }
     cancelNativeAlarm(reminder.id).catch(() => {});
-    const followUpReminder = settings.followUpNotifications === false ? null : getNextFollowUpReminder(reminder);
+    const responsePatch = {
+      promptYesCount: Number(reminder.promptYesCount || 0) + (mode === "yes" ? 1 : 0),
+      promptNoCount: Number(reminder.promptNoCount || 0) + (mode === "no" ? 1 : 0),
+      promptConfirmedCount: Number(reminder.promptConfirmedCount || 0) + (mode === "confirmed" ? 1 : 0)
+    };
+    const debugPrompt = Boolean(reminder.__debugPrompt);
+    if (debugPrompt) {
+      updateReminder(reminder.id, responsePatch);
+      setReminding(null);
+      setMessage("Debug prompt stats recorded.");
+      return;
+    }
+    const bypassFollowUp = mode === "confirmed";
+    const followUpReminder = bypassFollowUp || settings.followUpNotifications === false ? null : getNextFollowUpReminder(reminder);
     if (followUpReminder) {
       const notificationId = await scheduleReminderAlarms(followUpReminder);
-      updateReminder(reminder.id, { ...followUpReminder, notificationId });
+      updateReminder(reminder.id, { ...followUpReminder, ...responsePatch, notificationId });
     } else if (reminder.repeat && isRepeatStillActive(reminder)) {
       const nextReminder = {
         ...reminder,
@@ -308,13 +348,15 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
         streak: completed ? (reminder.streak || 0) + 1 : reminder.streak || 0
       };
       const notificationId = await scheduleReminderAlarms(nextReminder);
-      updateReminder(reminder.id, { ...nextReminder, notificationId });
+      updateReminder(reminder.id, { ...nextReminder, ...responsePatch, notificationId });
     } else if (!completed) {
-      updateReminder(reminder.id, { notificationId: null });
+      updateReminder(reminder.id, { ...responsePatch, notificationId: null });
     } else {
       updateReminder(reminder.id, {
+        ...responsePatch,
         completed: true,
         completedAt: new Date().toISOString(),
+        followUpCount: bypassFollowUp ? 0 : reminder.followUpCount,
         notificationId: null,
         streak: (reminder.streak || 0) + 1
       });
@@ -374,6 +416,20 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     ]);
   };
 
+  const confirmResetStats = () => {
+    Alert.alert("Reset stats?", "This clears Yes, No, and Really done counters for every task. Your tasks will stay.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Reset stats",
+        style: "destructive",
+        onPress: () => {
+          resetStats();
+          setMessage("Stats reset and queued for cloud sync.");
+        }
+      }
+    ]);
+  };
+
   const pickImage = async (source) => {
     const permission =
       source === "camera" ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -402,7 +458,14 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
       >
         {reminding ? (
-          <ReminderPrompt reminder={activeReminder} isDark={isDark} palette={palette} onNo={() => handlePromptResponse(activeReminder, false)} onYes={() => handlePromptResponse(activeReminder, true)} />
+          <ReminderPrompt
+            reminder={activeReminder}
+            isDark={isDark}
+            palette={palette}
+            onNo={() => handlePromptResponse(activeReminder, false, "no")}
+            onYes={() => handlePromptResponse(activeReminder, true, "yes")}
+            onConfirm={() => handlePromptResponse(activeReminder, true, "confirmed")}
+          />
         ) : editing ? (
           <TaskEditScreen
             reminder={editing}
@@ -476,13 +539,20 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
           />
         ) : (
           <>
-            <Animatable.View key={tab} animation="fadeIn" duration={220} style={styles.flex} useNativeDriver>
+            <Animatable.View
+              key={tab}
+              animation={tabDirection === "forward" ? "slideInRight" : "slideInLeft"}
+              duration={360}
+              easing="ease-out-cubic"
+              style={styles.flex}
+              useNativeDriver
+            >
               {tab === "home" ? (
                 <HomeTab
                   reminders={reminders}
                   loaded={loaded}
                   markedDates={markedDates}
-                  onTestReminder={setReminding}
+                  onTestReminder={(reminder) => setReminding({ ...reminder, __debugPrompt: true })}
                   showReminderDebugButton={settings.showReminderDebugButton}
                   isDark={isDark}
                   themeColors={themeColors}
@@ -524,6 +594,8 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                     setEditing({ ...reminder });
                   }}
                 />
+              ) : tab === "stats" ? (
+                <StatsTab reminders={reminders} isDark={isDark} palette={palette} />
               ) : tab === "account" ? (
                 <AccountTab
                   reminders={reminders}
@@ -541,11 +613,12 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   isDark={isDark}
                   palette={palette}
                   onReset={confirmResetReminders}
+                  onResetStats={confirmResetStats}
                   onMessage={setMessage}
                 />
               )}
             </Animatable.View>
-            <BottomNav active={tab} isDark={isDark} palette={palette} onChange={setTab} />
+            <BottomNav active={tab} isDark={isDark} palette={palette} taskCount={reminders.length} onChange={handleTabChange} />
           </>
         )}
       </KeyboardAvoidingView>
@@ -586,6 +659,7 @@ function ScreenTitle({ children, action, isDark = false }) {
 
 function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, palette, onEdit, onToggle, onAdd, onDelete }) {
   const [query, setQuery] = useState("");
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const colors = palette || getPalette(themeColors, isDark);
   const primary = colors.primary;
   const visibleReminders = reminders.filter((reminder) => {
@@ -593,9 +667,20 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
     return haystack.includes(query.trim().toLowerCase());
   });
 
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
+      setKeyboardHeight(event.endCoordinates?.height || 0);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
-      <ScreenTitle isDark={isDark}>Home</ScreenTitle>
+      <ScreenTitle isDark={isDark}>Tasks</ScreenTitle>
       <ScrollView style={styles.flex} contentContainerStyle={styles.homeList}>
         {!loaded ? (
           <View style={styles.emptyHome}>
@@ -611,11 +696,11 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
               <MaterialCommunityIcons name="bell-plus-outline" size={42} color={primary} />
             </View>
             <Text style={[styles.emptyTitle, isDark && styles.textOnDark]}>No reminders yet</Text>
-            <Text style={[styles.emptyText, isDark && styles.mutedOnDark]}>Use the add button below to create your first visual reminder.</Text>
+            <Text style={[styles.emptyText, styles.emptyTextCentered, isDark && styles.mutedOnDark]}>Use the add button below to create your first visual reminder.</Text>
           </View>
         ) : null}
         {visibleReminders.map((reminder, index) => (
-          <Animatable.View key={reminder.id} animation="fadeInUp" delay={index * 70} duration={320} useNativeDriver>
+          <Animatable.View key={reminder.id} animation="slideInUp" delay={index * 45} duration={420} useNativeDriver>
             {/* react-native-gesture-handler gives this list a native-feeling swipe delete gesture. */}
             <Swipeable
               overshootRight={false}
@@ -650,7 +735,15 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
         ))}
 
       </ScrollView>
-      <View style={[styles.searchDock, { backgroundColor: colors.surfaceVariant }, isDark && styles.surfaceVariantOnDark]}>
+      <Animatable.View
+        animation={keyboardHeight ? "slideInUp" : undefined}
+        duration={220}
+        style={[
+          styles.searchDock,
+          { backgroundColor: colors.surfaceVariant, bottom: keyboardHeight ? keyboardHeight + 20 : 96 },
+          isDark && styles.surfaceVariantOnDark
+        ]}
+      >
         <MaterialCommunityIcons name="magnify" size={22} color={colors.onSurfaceVariant} />
         <TextInput
           value={query}
@@ -668,7 +761,7 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
         <Pressable style={[styles.addButton, { backgroundColor: primary }]} onPress={onAdd}>
           <MaterialCommunityIcons name="plus" size={26} color="#FFFFFF" />
         </Pressable>
-      </View>
+      </Animatable.View>
     </View>
   );
 }
@@ -694,6 +787,7 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Schedule</ScreenTitle>
       <ScrollView contentContainerStyle={styles.scheduleContent}>
+        <Animatable.View animation="slideInUp" duration={440} delay={60} useNativeDriver>
         <View style={[styles.materialCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
           <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Month task distribution</Text>
           <Calendar
@@ -715,6 +809,8 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
             }}
           />
         </View>
+        </Animatable.View>
+        <Animatable.View animation="slideInUp" duration={440} delay={150} useNativeDriver>
         <View style={[styles.materialCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
           <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>{format(parseISO(selectedDate), DATE_DISPLAY_FORMAT)} reminders</Text>
           {selectedReminders.length ? (
@@ -737,7 +833,173 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
             </View>
           )}
         </View>
+        </Animatable.View>
       </ScrollView>
+    </View>
+  );
+}
+
+function StatsTab({ reminders, isDark, palette }) {
+  const colors = palette || getPalette({}, isDark);
+  const totals = reminders.reduce(
+    (acc, reminder) => {
+      acc.yes += Number(reminder.promptYesCount || 0);
+      acc.no += Number(reminder.promptNoCount || 0);
+      acc.confirmed += Number(reminder.promptConfirmedCount || 0);
+      return acc;
+    },
+    { yes: 0, no: 0, confirmed: 0 }
+  );
+  const totalResponses = totals.yes + totals.no + totals.confirmed;
+  const riskRows = reminders
+    .map((reminder) => {
+      const yes = Number(reminder.promptYesCount || 0);
+      const no = Number(reminder.promptNoCount || 0);
+      const confirmed = Number(reminder.promptConfirmedCount || 0);
+      return {
+        reminder,
+        score: no + Math.max(0, yes - confirmed),
+        yes,
+        no,
+        confirmed
+      };
+    })
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
+  const cards = [
+    ["Really done", totals.confirmed, "brain", colors.primary],
+    ["Yes taps", totals.yes, "check-circle-outline", SUCCESS],
+    ["No taps", totals.no, "close-circle-outline", ERROR]
+  ];
+
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+      <ScreenTitle isDark={isDark}>Stats</ScreenTitle>
+      <ScrollView contentContainerStyle={styles.statsContent}>
+        <Animatable.View animation="slideInUp" duration={460} delay={60} useNativeDriver>
+          <View style={[styles.statsHero, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+            <Text style={[styles.statsHeroLabel, { color: colors.primary }]}>Reminder memory signal</Text>
+            <StatPieChart
+              totals={totals}
+              colors={{
+                confirmed: colors.primary,
+                yes: SUCCESS,
+                no: ERROR,
+                track: colors.surfaceVariant,
+                text: colors.onSurface
+              }}
+            />
+            <Text style={[styles.statsHeroCopy, isDark && styles.mutedOnDark]}>
+              Total recorded reminder responses.
+            </Text>
+            <View style={styles.pieLegend}>
+              <LegendDot color={colors.primary} label="Really done" isDark={isDark} />
+              <LegendDot color={SUCCESS} label="Yes taps" isDark={isDark} />
+              <LegendDot color={ERROR} label="No taps" isDark={isDark} />
+            </View>
+          </View>
+        </Animatable.View>
+
+        <View style={styles.statsCardGrid}>
+          {cards.map(([label, value, icon, color], index) => (
+            <Animatable.View key={label} animation="slideInUp" delay={140 + index * 70} duration={420} style={[styles.statsMiniCard, { backgroundColor: colors.surface, borderColor: colors.outline }]} useNativeDriver>
+              <MaterialCommunityIcons name={icon} size={24} color={color} />
+              <Text style={[styles.statsMiniValue, { color }]}>{value}</Text>
+              <Text style={[styles.statsMiniLabel, isDark && styles.mutedOnDark]}>{label}</Text>
+            </Animatable.View>
+          ))}
+        </View>
+
+        <Animatable.View animation="slideInUp" duration={440} delay={260} useNativeDriver>
+        <View style={[styles.materialCard, styles.statsInsightCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+          <Text style={[styles.sectionTitle, styles.statsInsightTitle, isDark && styles.textOnDark]}>Likely forgettable tasks</Text>
+          <Text style={[styles.statsInsightCopy, isDark && styles.mutedOnDark]}>
+            Tasks with more No taps or unconfirmed Yes taps appear here first.
+          </Text>
+          {riskRows.length ? (
+            riskRows.map(({ reminder, score, yes, no, confirmed }) => (
+              <View key={reminder.id} style={styles.riskRow}>
+                <VisualCue reminder={reminder} size={38} iconSize={18} compact palette={colors} />
+                <View style={styles.riskCopy}>
+                  <Text style={[styles.taskTitle, isDark && styles.textOnDark]} numberOfLines={1}>{reminder.title}</Text>
+                  <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>
+                    Risk {score} · Yes {yes} · No {no} · Really done {confirmed}
+                  </Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={[styles.emptyText, styles.emptyTextCentered, isDark && styles.mutedOnDark]}>
+              No reminder response data yet. Use the reminder screen to start building stats.
+            </Text>
+          )}
+        </View>
+        </Animatable.View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function LegendDot({ color, label, isDark }) {
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendSwatch, { backgroundColor: color }]} />
+      <Text style={[styles.legendLabel, isDark && styles.mutedOnDark]}>{label}</Text>
+    </View>
+  );
+}
+
+function StatPieChart({ totals, colors }) {
+  const size = 156;
+  const strokeWidth = 18;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const total = totals.confirmed + totals.yes + totals.no;
+  const segments = [
+    { key: "confirmed", value: totals.confirmed, color: colors.confirmed },
+    { key: "yes", value: totals.yes, color: colors.yes },
+    { key: "no", value: totals.no, color: colors.no }
+  ].filter((segment) => segment.value > 0);
+  let offset = 0;
+
+  return (
+    <View style={styles.pieWrap}>
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={colors.track}
+          strokeWidth={strokeWidth}
+          fill="transparent"
+        />
+        {segments.map((segment) => {
+          const dash = total ? (segment.value / total) * circumference : 0;
+          const circle = (
+            <Circle
+              key={segment.key}
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={segment.color}
+              strokeWidth={strokeWidth}
+              strokeDasharray={`${dash} ${circumference - dash}`}
+              strokeDashoffset={-offset}
+              strokeLinecap="round"
+              fill="transparent"
+              origin={`${size / 2}, ${size / 2}`}
+              rotation="-90"
+            />
+          );
+          offset += dash;
+          return circle;
+        })}
+      </Svg>
+      <View style={styles.pieCenter}>
+        <Text style={[styles.pieCenterValue, { color: colors.text }]}>{total}</Text>
+        <Text style={styles.pieCenterLabel}>total</Text>
+      </View>
     </View>
   );
 }
@@ -751,15 +1013,25 @@ function SwipeDeleteAction({ onPress }) {
   );
 }
 
-function ReminderPrompt({ reminder, isDark, palette, onNo, onYes }) {
+function ReminderPrompt({ reminder, isDark, palette, onNo, onYes, onConfirm }) {
   const colors = palette || getPalette({}, isDark);
   return (
-    <Animatable.View animation="fadeInUp" duration={260} style={[styles.reminderScreen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
+    <Animatable.View animation="zoomInUp" duration={420} style={[styles.reminderScreen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle isDark={isDark}>VizMinder</ScreenTitle>
-      <VisualCue reminder={reminder} size={104} iconSize={48} palette={colors} />
+      <Animatable.View animation="pulse" iterationCount="infinite" duration={1800} useNativeDriver>
+        <VisualCue reminder={reminder} size={104} iconSize={48} palette={colors} />
+      </Animatable.View>
       <View style={styles.reminderCopy}>
         <Text style={[styles.reminderHeadline, { color: colors.primary }]}>It is {format(parseISO(reminder.scheduledAt), "hh:mm")} now !</Text>
         <Text style={[styles.reminderQuestion, { color: colors.primary }]}>Have you completed {reminder.title}?</Text>
+        <Pressable
+          style={[styles.confirmMemoryButton, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+          onPress={onConfirm}
+          accessibilityLabel="Confirm this reminder is fully done"
+        >
+          <MaterialCommunityIcons name="brain" size={18} color={colors.primary} />
+          <Text style={[styles.confirmMemoryText, { color: colors.primary }]}>I really did it</Text>
+        </Pressable>
       </View>
       <View style={styles.answerRow}>
         <Pressable style={[styles.answerButton, { backgroundColor: colors.primary }]} onPress={onNo}>
@@ -1243,6 +1515,7 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Account</ScreenTitle>
+      <Animatable.View animation="slideInUp" duration={430} delay={60} useNativeDriver>
       <View style={[styles.accountCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
         <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
           <MaterialCommunityIcons name="account-outline" size={36} color={colors.primary} />
@@ -1252,9 +1525,10 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
           <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>{accountLabel}</Text>
         </View>
       </View>
+      </Animatable.View>
       <ScrollView contentContainerStyle={styles.accountContent}>
         {!signedIn ? (
-          <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+          <Animatable.View animation="slideInUp" duration={430} delay={140} style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]} useNativeDriver>
             <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sign in</Text>
             <TextInput value={email} onChangeText={setEmail} label="Email" autoCapitalize="none" keyboardType="email-address" style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
             <TextInput value={password} onChangeText={setPassword} label="Password" secureTextEntry style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
@@ -1264,18 +1538,18 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
               <Button mode="outlined" textColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("login")}>Login</Button>
               <Button mode="contained" buttonColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("register")}>Register</Button>
             </View>
-          </View>
+          </Animatable.View>
         ) : (
-          <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+          <Animatable.View animation="slideInUp" duration={430} delay={140} style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]} useNativeDriver>
             <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Signed in</Text>
             <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>{accountLabel}</Text>
             {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
             <Button mode="outlined" textColor={colors.primary} onPress={() => signOutUser().catch((error) => setSyncError(error.message))}>Sign out</Button>
-          </View>
+          </Animatable.View>
         )}
 
         {signedIn ? (
-        <View style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+        <Animatable.View animation="slideInUp" duration={430} delay={220} style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]} useNativeDriver>
           <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sync Data</Text>
           <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Completed reminders: {completedCount}</Text>
           <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Sync status: {syncing ? "Syncing" : syncProgress === 1 ? "Synced" : "Idle"}</Text>
@@ -1291,39 +1565,48 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
               </View>
             )) : <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>Press sync to inspect current Firestore status.</Text>}
           </View>
-        </View>
+        </Animatable.View>
         ) : null}
       </ScrollView>
     </View>
   );
 }
 
-function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onMessage }) {
+function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onResetStats, onMessage }) {
   const colors = palette || getPalette({}, isDark);
   const [settingsPage, setSettingsPage] = useState("main");
+  const [settingsDirection, setSettingsDirection] = useState("forward");
+  const openSettingsPage = (page) => {
+    setSettingsDirection("forward");
+    setSettingsPage(page);
+  };
+  const goSettingsMain = () => {
+    setSettingsDirection("back");
+    setSettingsPage("main");
+  };
   useEffect(() => {
     if (Platform.OS !== "android" || settingsPage === "main") {
       return undefined;
     }
     const backSubscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setSettingsPage("main");
+      goSettingsMain();
       return true;
     });
     return () => backSubscription.remove();
   }, [settingsPage]);
   const items = [
-    ["palette-outline", "Theme", "Light, dark, and Material color options.", () => setSettingsPage("theme")],
-    ["tune-vertical", "Advanced", "Debug controls and native alarm notes.", () => setSettingsPage("advanced")],
-    ["message-outline", "Notification", "Notification permissions, alert sound, and system settings.", () => setSettingsPage("notification")],
-    ["restart", "Reset Reminders", "Clear all reminders on this device.", onReset]
+    ["palette-outline", "Theme", "Light, dark, and Material color options.", () => openSettingsPage("theme")],
+    ["tune-vertical", "Advanced", "Debug controls and native alarm notes.", () => openSettingsPage("advanced")],
+    ["message-outline", "Notification", "Notification permissions, alert sound, and system settings.", () => openSettingsPage("notification")],
+    ["restart", "Reset", "Clear task data or reset stats separately.", () => openSettingsPage("reset")]
   ];
 
   if (settingsPage === "theme") {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+      <SettingsPageMotion page={settingsPage} direction={settingsDirection} colors={colors} isDark={isDark}>
         <ScreenTitle isDark={isDark}>Theme</ScreenTitle>
         <ScrollView contentContainerStyle={styles.settingsContent}>
-          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
+          <Pressable style={styles.backRow} onPress={goSettingsMain}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
             <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
           </Pressable>
@@ -1354,16 +1637,16 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
             </View>
           </View>
         </ScrollView>
-      </View>
+      </SettingsPageMotion>
     );
   }
 
   if (settingsPage === "advanced") {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+      <SettingsPageMotion page={settingsPage} direction={settingsDirection} colors={colors} isDark={isDark}>
         <ScreenTitle isDark={isDark}>Advanced</ScreenTitle>
         <ScrollView contentContainerStyle={styles.settingsContent}>
-          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
+          <Pressable style={styles.backRow} onPress={goSettingsMain}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
             <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
           </Pressable>
@@ -1379,21 +1662,60 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
                 onValueChange={(value) => onUpdateSettings({ showReminderDebugButton: value })}
               />
             </View>
+            <View style={styles.settingsSwitchRow}>
+              <View style={styles.settingsCopy}>
+                <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Record debug prompt stats</Text>
+                <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+                  When off, pressing the Home debug prompt does not change Stats.
+                </Text>
+              </View>
+              <Switch
+                value={settings.recordDebugPromptStats}
+                color={colors.primary}
+                onValueChange={(value) => onUpdateSettings({ recordDebugPromptStats: value })}
+              />
+            </View>
             <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
               The installed Android APK uses native AlarmManager and a lock-screen Activity for full-screen visual reminders. Android may still require notification and exact alarm permission.
             </Text>
           </View>
         </ScrollView>
-      </View>
+      </SettingsPageMotion>
+    );
+  }
+
+  if (settingsPage === "reset") {
+    return (
+      <SettingsPageMotion page={settingsPage} direction={settingsDirection} colors={colors} isDark={isDark}>
+        <ScreenTitle isDark={isDark}>Reset</ScreenTitle>
+        <ScrollView contentContainerStyle={styles.settingsContent}>
+          <Pressable style={styles.backRow} onPress={goSettingsMain}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
+            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
+          </Pressable>
+          <View style={[styles.settingsPanel, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+            <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Reset options</Text>
+            <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+              These actions affect local data and signed-in Firestore sync data.
+            </Text>
+            <Button mode="outlined" textColor={colors.error} onPress={onResetStats}>
+              Reset stats only
+            </Button>
+            <Button mode="contained" buttonColor={colors.error} onPress={onReset}>
+              Reset all tasks
+            </Button>
+          </View>
+        </ScrollView>
+      </SettingsPageMotion>
     );
   }
 
   if (settingsPage === "notification") {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+      <SettingsPageMotion page={settingsPage} direction={settingsDirection} colors={colors} isDark={isDark}>
         <ScreenTitle isDark={isDark}>Notification</ScreenTitle>
         <ScrollView contentContainerStyle={styles.settingsContent}>
-          <Pressable style={styles.backRow} onPress={() => setSettingsPage("main")}>
+          <Pressable style={styles.backRow} onPress={goSettingsMain}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
             <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
           </Pressable>
@@ -1476,17 +1798,17 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
             </Button>
           </View>
         </ScrollView>
-      </View>
+      </SettingsPageMotion>
     );
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
+    <SettingsPageMotion page={settingsPage} direction={settingsDirection} colors={colors} isDark={isDark}>
       <ScreenTitle isDark={isDark}>Settings</ScreenTitle>
       <ScrollView contentContainerStyle={styles.settingsContent}>
-        <View style={[styles.settingsList, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-          {items.map(([icon, title, copy, action]) => (
-            <View key={title}>
+        <Animatable.View animation="slideInUp" duration={440} delay={80} style={[styles.settingsList, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]} useNativeDriver>
+          {items.map(([icon, title, copy, action], index) => (
+            <Animatable.View key={title} animation="slideInRight" duration={390} delay={140 + index * 55} useNativeDriver>
               <Pressable android_ripple={{ color: colors.surfaceVariant }} style={styles.settingsRow} onPress={action}>
                 <MaterialCommunityIcons name={icon} size={24} color={colors.onSurfaceVariant} />
                 <View style={styles.settingsCopy}>
@@ -1496,11 +1818,26 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onM
                 <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
               </Pressable>
               <Divider style={styles.settingsDivider} />
-            </View>
+            </Animatable.View>
           ))}
-        </View>
+        </Animatable.View>
       </ScrollView>
-    </View>
+    </SettingsPageMotion>
+  );
+}
+
+function SettingsPageMotion({ page, direction, colors, isDark, children }) {
+  return (
+    <Animatable.View
+      key={`settings-${page}`}
+      animation={direction === "forward" ? "slideInRight" : "slideInLeft"}
+      duration={360}
+      easing="ease-out-cubic"
+      style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}
+      useNativeDriver
+    >
+      {children}
+    </Animatable.View>
   );
 }
 
@@ -1516,11 +1853,12 @@ function SettingsSwitch({ title, description, value, onValueChange, isDark, colo
   );
 }
 
-function BottomNav({ active, isDark, palette, onChange }) {
+function BottomNav({ active, isDark, palette, taskCount = 0, onChange }) {
   const colors = palette || getPalette({}, isDark);
   const tabs = [
-    ["home", "bell-outline", "Home"],
+    ["home", "format-list-checks", "Tasks"],
     ["schedule", "calendar-month-outline", "Schedule"],
+    ["stats", "chart-pie", "Stats"],
     ["account", "account-circle-outline", "Account"],
     ["settings", "cog-outline", "Settings"]
   ];
@@ -1528,11 +1866,15 @@ function BottomNav({ active, isDark, palette, onChange }) {
   return (
     <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.outline }, isDark && styles.bottomNavDark]}>
       {tabs.map(([key, icon, label]) => (
-        <Pressable key={key} style={styles.navItem} onPress={() => onChange(key)}>
-          <View style={[styles.navIconWrap, active === key && { backgroundColor: colors.primaryContainer, borderRadius: 24 }]}>
+        <Pressable key={key} style={[styles.navItem, key === "stats" && styles.navItemRaised]} onPress={() => onChange(key)}>
+          <View style={[
+            styles.navIconWrap,
+            key === "stats" && [styles.navIconRaised, { backgroundColor: active === key ? colors.primary : colors.primaryContainer }],
+            key !== "stats" && active === key && { backgroundColor: colors.primaryContainer, borderRadius: 24 }
+          ]}>
             <View style={styles.navIconAnchor}>
-              <MaterialCommunityIcons name={icon} size={24} color={active === key ? colors.primary : colors.onSurfaceVariant} />
-              {key === "home" ? <View style={styles.notificationDot} /> : null}
+              <MaterialCommunityIcons name={icon} size={key === "stats" ? 28 : 24} color={key === "stats" && active === key ? colors.onPrimary : active === key ? colors.primary : colors.onSurfaceVariant} />
+              {key === "home" && taskCount > 0 ? <View style={styles.notificationDot} /> : null}
             </View>
           </View>
           <Text style={[styles.navLabel, { color: active === key ? colors.primary : colors.onSurfaceVariant }]}>{label}</Text>
@@ -1960,6 +2302,7 @@ const styles = StyleSheet.create({
   },
   screenTitle: {
     color: TEXT,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: 28,
     fontWeight: "600",
     letterSpacing: 0.15
@@ -2088,6 +2431,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: TEXT,
+    fontFamily: FONT_BOLD,
     fontSize: 24,
     fontWeight: "700",
     marginTop: 8
@@ -2109,6 +2453,128 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 96
   },
+  statsContent: {
+    gap: 14,
+    padding: 16,
+    paddingBottom: 104
+  },
+  statsHero: {
+    alignItems: "center",
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 18
+  },
+  statsHeroLabel: {
+    fontSize: 13,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  statsHeroCopy: {
+    color: MUTED,
+    fontFamily: FONT_REGULAR,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+    textAlign: "center"
+  },
+  pieWrap: {
+    alignItems: "center",
+    height: 156,
+    justifyContent: "center",
+    marginBottom: 10,
+    marginTop: 14,
+    width: 156
+  },
+  pieCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute"
+  },
+  pieCenterValue: {
+    fontFamily: FONT_BOLD,
+    fontSize: 30,
+    fontWeight: "900",
+    lineHeight: 36
+  },
+  pieCenterLabel: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  pieLegend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "center",
+    marginBottom: 14
+  },
+  legendItem: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6
+  },
+  legendSwatch: {
+    borderRadius: 5,
+    height: 10,
+    width: 10
+  },
+  legendLabel: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  statsCardGrid: {
+    flexDirection: "row",
+    gap: 10
+  },
+  statsMiniCard: {
+    alignItems: "center",
+    borderRadius: 20,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 112,
+    padding: 12
+  },
+  statsMiniValue: {
+    fontFamily: FONT_BOLD,
+    fontSize: 28,
+    fontWeight: "900",
+    marginTop: 6
+  },
+  statsMiniLabel: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center"
+  },
+  riskRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    paddingVertical: 8
+  },
+  riskCopy: {
+    flex: 1
+  },
+  statsInsightCard: {
+    alignItems: "center"
+  },
+  statsInsightTitle: {
+    textAlign: "center"
+  },
+  statsInsightCopy: {
+    color: MUTED,
+    fontFamily: FONT_REGULAR,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
+    maxWidth: 260,
+    textAlign: "center"
+  },
   scheduleRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -2125,7 +2591,12 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: MUTED,
+    fontFamily: FONT_REGULAR,
     fontSize: 14
+  },
+  emptyTextCentered: {
+    maxWidth: 260,
+    textAlign: "center"
   },
   swipeDeleteAction: {
     alignItems: "center",
@@ -2173,17 +2644,20 @@ const styles = StyleSheet.create({
   },
   taskTime: {
     color: PURPLE,
+    fontFamily: FONT_BOLD,
     fontSize: 12,
     fontWeight: "700"
   },
   taskTitle: {
     color: TEXT,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: 16,
     fontWeight: "600",
     lineHeight: 22
   },
   taskDescription: {
     color: MUTED,
+    fontFamily: FONT_REGULAR,
     fontSize: 13,
     lineHeight: 18
   },
@@ -2206,7 +2680,8 @@ const styles = StyleSheet.create({
     borderColor: LINE,
     borderWidth: 1,
     borderRadius: 28,
-    bottom: 78,
+    bottom: 96,
+    elevation: 7,
     flexDirection: "row",
     height: 56,
     justifyContent: "space-between",
@@ -2214,7 +2689,11 @@ const styles = StyleSheet.create({
     paddingLeft: 16,
     paddingRight: 8,
     position: "absolute",
-    right: 18
+    right: 18,
+    shadowColor: "#000000",
+    shadowOffset: { height: 4, width: 0 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10
   },
   searchDockInput: {
     backgroundColor: "transparent",
@@ -2245,6 +2724,7 @@ const styles = StyleSheet.create({
   },
   reminderHeadline: {
     color: PURPLE,
+    fontFamily: FONT_BOLD,
     fontSize: 26,
     fontWeight: "800",
     marginBottom: 26,
@@ -2252,9 +2732,25 @@ const styles = StyleSheet.create({
   },
   reminderQuestion: {
     color: PURPLE,
+    fontFamily: FONT_BOLD,
     fontSize: 22,
     fontWeight: "800",
     textAlign: "center"
+  },
+  confirmMemoryButton: {
+    alignItems: "center",
+    borderRadius: 22,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 24,
+    minHeight: 44,
+    paddingHorizontal: 18
+  },
+  confirmMemoryText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 15,
+    fontWeight: "800"
   },
   answerRow: {
     flexDirection: "row",
@@ -2684,9 +3180,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     bottom: 0,
     flexDirection: "row",
-    height: 66,
+    height: 78,
     justifyContent: "space-around",
     left: 0,
+    paddingBottom: 8,
+    paddingTop: 6,
     position: "absolute",
     right: 0
   },
@@ -2696,14 +3194,29 @@ const styles = StyleSheet.create({
   },
   navItem: {
     alignItems: "center",
-    minWidth: 78
+    flex: 1,
+    justifyContent: "center",
+    minWidth: 0
+  },
+  navItemRaised: {
+    marginTop: -24
   },
   navIconWrap: {
     alignItems: "center",
     borderRadius: 18,
     height: 32,
     justifyContent: "center",
-    width: 56
+    width: 48
+  },
+  navIconRaised: {
+    borderRadius: 32,
+    elevation: 6,
+    height: 62,
+    shadowColor: "#000000",
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    width: 62
   },
   navIconActive: {
     backgroundColor: PRIMARY_CONTAINER,
@@ -2729,8 +3242,10 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     color: "#56515E",
-    fontSize: 12,
-    fontWeight: "700"
+    fontFamily: FONT_MEDIUM,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2
   },
   modalLayer: {
     alignItems: "center",
@@ -2980,4 +3495,6 @@ const styles = StyleSheet.create({
     lineHeight: 18
   }
 });
+
+
 

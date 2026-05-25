@@ -6,6 +6,7 @@ import {
   fetchRemindersFromFirestore,
   getFirebaseServices,
   saveReminderToFirestore,
+  replaceRemindersInFirestore,
   signInGuest,
   syncRemindersToFirestore
 } from "../services/firebase";
@@ -23,6 +24,9 @@ function normalizeReminder(reminder) {
     followUpEnabled: Boolean(reminder.followUpEnabled),
     followUpCount: Number(reminder.followUpCount || 0),
     followUpIntervalMinutes: Number(reminder.followUpIntervalMinutes || 5),
+    promptYesCount: Number(reminder.promptYesCount || 0),
+    promptNoCount: Number(reminder.promptNoCount || 0),
+    promptConfirmedCount: Number(reminder.promptConfirmedCount || 0),
     ringtone: reminder.ringtone || "alarm",
     important: Boolean(reminder.important),
     completed: Boolean(reminder.completed),
@@ -190,6 +194,9 @@ export function useReminders() {
       followUpEnabled: false,
       followUpCount: 0,
       followUpIntervalMinutes: 5,
+      promptYesCount: 0,
+      promptNoCount: 0,
+      promptConfirmedCount: 0,
       important: false,
       completed: false,
       imageUri: null,
@@ -205,6 +212,28 @@ export function useReminders() {
   const resetPrototype = useCallback(() => {
     replaceReminderState([]);
     clearReminders().catch(() => {});
+    const userId = getCurrentFirebaseUserId();
+    if (userId) {
+      replaceRemindersInFirestore(userId, []).catch(() => {});
+    }
+  }, [replaceReminderState]);
+
+  const resetStats = useCallback(() => {
+    replaceReminderState((items) => {
+      const next = items.map((item) => ({
+        ...item,
+        promptYesCount: 0,
+        promptNoCount: 0,
+        promptConfirmedCount: 0,
+        updatedAt: new Date().toISOString()
+      }));
+      Promise.all(next.map(upsertReminder)).catch(() => {});
+      const userId = getCurrentFirebaseUserId();
+      if (userId) {
+        replaceRemindersInFirestore(userId, next).catch(() => {});
+      }
+      return next;
+    });
   }, [replaceReminderState]);
 
   const visibleReminders = useMemo(
@@ -251,6 +280,7 @@ export function useReminders() {
     addReminder,
     deleteReminder,
     resetPrototype,
+    resetStats,
     getCountdown,
     refreshFromCloud,
     syncNow,
