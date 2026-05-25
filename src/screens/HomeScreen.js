@@ -6,6 +6,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -774,19 +775,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
             onUpdate={(patch) => {
               setEditing((current) => ({ ...current, ...patch }));
             }}
-            onAttachImage={async () => {
-              Alert.alert("Photo visual cue", "Choose how to attach an image.", [
-                { text: "Choose from phone", onPress: async () => {
-                    const imageUri = await pickImage("library");
-                    if (imageUri) setEditing((current) => ({ ...current, imageUri, visualType: "image" }));
-                  } },
-                { text: "Take photo", onPress: async () => {
-                    const imageUri = await pickImage("camera");
-                    if (imageUri) setEditing((current) => ({ ...current, imageUri, visualType: "image" }));
-                  } },
-                { text: "Cancel", style: "cancel" }
-              ]);
-            }}
+            onPickImage={pickImage}
             onSave={async () => {
               if (!editing.title.trim()) {
                 setMessage("Title is required.");
@@ -1539,11 +1528,12 @@ function ReminderPrompt({ reminder, isDark, palette, onNo, onYes, onConfirm }) {
   );
 }
 
-function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachImage, onSave, onCancel, onDelete }) {
+function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onPickImage, onSave, onCancel, onDelete }) {
   const colors = palette || getPalette({}, isDark);
   const [timeOpen, setTimeOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
   const [repeatUntilOpen, setRepeatUntilOpen] = useState(false);
+  const [selectionSheet, setSelectionSheet] = useState(null);
   const currentScheduled = isValid(parseISO(reminder.scheduledAt)) ? parseISO(reminder.scheduledAt) : new Date();
   const timePickerValue = reminder.timeSet === false ? new Date() : currentScheduled;
   const datePickerValue = reminder.hasDate === false ? new Date() : currentScheduled;
@@ -1680,25 +1670,16 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
     }
     setDateOpen(true);
   };
-  const openRingtonePicker = () => {
-    Alert.alert(
-      "Reminder sound",
-      "Choose the sound used by the full-screen alarm.",
-      RINGTONE_OPTIONS.map(([value, label]) => ({
-        text: label,
-        onPress: () => onUpdate({ ringtone: value })
-      })).concat([{ text: "Cancel", style: "cancel" }])
-    );
-  };
-  const openPriorityPicker = () => {
-    Alert.alert(
-      "Priority",
-      "Choose how this task should notify you.",
-      PRIORITY_OPTIONS.map(([value, label, description]) => ({
-        text: `${label} - ${description}`,
-        onPress: () => onUpdate({ priority: value })
-      })).concat([{ text: "Cancel", style: "cancel" }])
-    );
+  const openPhotoPicker = () => setSelectionSheet("photo");
+  const openRingtonePicker = () => setSelectionSheet("sound");
+  const openPriorityPicker = () => setSelectionSheet("priority");
+  const closeSelectionSheet = () => setSelectionSheet(null);
+  const choosePhotoSource = async (source) => {
+    closeSelectionSheet();
+    const imageUri = await onPickImage(source);
+    if (imageUri) {
+      onUpdate({ imageUri, visualType: "image" });
+    }
   };
   const openRepeatUntilPicker = () => {
     if (Platform.OS === "android") {
@@ -1780,12 +1761,12 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled">
         <View style={styles.imageEditWrap}>
           <VisualCue reminder={reminder} size={104} iconSize={48} palette={colors} />
-          <Pressable style={[styles.editFab, { backgroundColor: colors.primary }]} onPress={onAttachImage}>
+          <Pressable style={[styles.editFab, { backgroundColor: colors.primary }]} onPress={openPhotoPicker}>
             <MaterialCommunityIcons name="pencil" size={16} color="#FFFFFF" />
           </Pressable>
         </View>
 
-        <VisualSourcePicker reminder={reminder} isDark={isDark} palette={colors} onUpdate={onUpdate} onAttachImage={onAttachImage} />
+        <VisualSourcePicker reminder={reminder} isDark={isDark} palette={colors} onUpdate={onUpdate} onAttachImage={openPhotoPicker} />
 
         <EditTextField isDark={isDark} palette={colors} label="Title" value={reminder.title} onChangeText={(title) => onUpdate({ title })} />
         <EditTextField
@@ -1976,7 +1957,105 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           }}
         />
       ) : null}
+      <SelectionSheet
+        visible={selectionSheet === "photo"}
+        title="Photo visual cue"
+        subtitle="Choose how to attach an image."
+        colors={colors}
+        isDark={isDark}
+        onClose={closeSelectionSheet}
+        options={[
+          { key: "library", label: "Choose from phone", description: "Pick an existing image", icon: "image-outline", onPress: () => choosePhotoSource("library") },
+          { key: "camera", label: "Take photo", description: "Open the camera", icon: "camera-outline", onPress: () => choosePhotoSource("camera") }
+        ]}
+      />
+      <SelectionSheet
+        visible={selectionSheet === "priority"}
+        title="Priority"
+        subtitle="Choose how this task should notify you."
+        colors={colors}
+        isDark={isDark}
+        onClose={closeSelectionSheet}
+        options={PRIORITY_OPTIONS.map(([value, label, description]) => ({
+          key: value,
+          label,
+          description,
+          icon: PRIORITY_META[value]?.icon || "flag-outline",
+          color: PRIORITY_META[value]?.color,
+          selected: (reminder.priority || "high") === value,
+          onPress: () => {
+            onUpdate({ priority: value });
+            closeSelectionSheet();
+          }
+        }))}
+      />
+      <SelectionSheet
+        visible={selectionSheet === "sound"}
+        title="Reminder sound"
+        subtitle="Choose the sound used by the full-screen alarm."
+        colors={colors}
+        isDark={isDark}
+        onClose={closeSelectionSheet}
+        options={RINGTONE_OPTIONS.map(([value, label]) => ({
+          key: value,
+          label,
+          description: value === "silent" ? "No alarm sound" : value === "chime" ? "Short soft cue" : "Standard reminder sound",
+          icon: value === "silent" ? "volume-off" : value === "chime" ? "bell-ring-outline" : "alarm",
+          selected: (reminder.ringtone || "alarm") === value,
+          onPress: () => {
+            onUpdate({ ringtone: value });
+            closeSelectionSheet();
+          }
+        }))}
+      />
     </Animatable.View>
+  );
+}
+
+function SelectionSheet({ visible, title, subtitle, options, colors, isDark, onClose }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose}>
+        <Animatable.View
+          animation={visible ? "slideInUp" : undefined}
+          duration={260}
+          easing="ease-out-cubic"
+          style={[styles.selectionSheet, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}
+          useNativeDriver
+        >
+          <Pressable onPress={(event) => event.stopPropagation()}>
+            <View style={styles.sheetHandle} />
+            <Text style={[styles.sheetTitle, isDark && styles.textOnDark]}>{title}</Text>
+            {subtitle ? <Text style={[styles.sheetSubtitle, isDark && styles.mutedOnDark]}>{subtitle}</Text> : null}
+            <View style={styles.sheetOptions}>
+              {options.map((option) => {
+                const accent = option.color || colors.primary;
+                return (
+                  <Pressable
+                    key={option.key}
+                    android_ripple={{ color: `${accent}22` }}
+                    style={[styles.sheetOption, { borderColor: option.selected ? accent : colors.outline, backgroundColor: option.selected ? `${accent}14` : colors.surfaceVariant }, isDark && !option.selected && styles.inputOnDark]}
+                    onPress={option.onPress}
+                  >
+                    <View style={[styles.sheetOptionIcon, { backgroundColor: `${accent}1F` }]}>
+                      <MaterialCommunityIcons name={option.icon} size={21} color={accent} />
+                    </View>
+                    <View style={styles.settingsCopy}>
+                      <Text style={[styles.sheetOptionTitle, isDark && styles.textOnDark]}>{option.label}</Text>
+                      {option.description ? <Text style={[styles.sheetOptionDescription, isDark && styles.mutedOnDark]}>{option.description}</Text> : null}
+                    </View>
+                    {option.selected ? <MaterialCommunityIcons name="check-circle" size={22} color={accent} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Button mode="text" textColor={colors.onSurfaceVariant} onPress={onClose} style={styles.sheetCancelButton}>
+              Cancel
+            </Button>
+          </Pressable>
+        </Animatable.View>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -4823,6 +4902,78 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flex: 1,
     justifyContent: "center"
+  },
+  sheetBackdrop: {
+    backgroundColor: "rgba(20, 18, 24, 0.42)",
+    flex: 1,
+    justifyContent: "flex-end"
+  },
+  selectionSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    paddingTop: 10
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    backgroundColor: "#CAC4D0",
+    borderRadius: 2,
+    height: 4,
+    marginBottom: 14,
+    width: 42
+  },
+  sheetTitle: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 22,
+    fontWeight: "900"
+  },
+  sheetSubtitle: {
+    color: MUTED,
+    fontFamily: FONT_REGULAR,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 4
+  },
+  sheetOptions: {
+    gap: 10,
+    marginTop: 16
+  },
+  sheetOption: {
+    alignItems: "center",
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 64,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  sheetOptionIcon: {
+    alignItems: "center",
+    borderRadius: 18,
+    height: 40,
+    justifyContent: "center",
+    width: 40
+  },
+  sheetOptionTitle: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  sheetOptionDescription: {
+    color: MUTED,
+    fontFamily: FONT_REGULAR,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2
+  },
+  sheetCancelButton: {
+    alignSelf: "center",
+    marginTop: 8
   },
   blurOverlay: {
     ...StyleSheet.absoluteFillObject,
