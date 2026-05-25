@@ -733,9 +733,9 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     <SafeAreaView style={[styles.safeArea, { backgroundColor: themedSurface }, isDark && styles.safeAreaDark]}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        enabled={true}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 64}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        enabled={Platform.OS === "ios"}
+        keyboardVerticalOffset={0}
       >
         {reminding ? (
           <ReminderPrompt
