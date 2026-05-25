@@ -54,6 +54,8 @@ Expo Go can preview some React Native screens, but it cannot fully test native a
 npm start
 ```
 
+The `npm start`, `npm run android`, and `npm run web` commands intentionally avoid shell-specific environment syntax so they work on Windows, macOS, and Linux.
+
 For export validation:
 
 ```bash
@@ -68,13 +70,32 @@ npm test
 
 ## Local APK Build
 
-The project supports local Android builds through the checked-in `android` folder.
+The project supports local Android builds through the checked-in `android` folder. APK builds should use the Gradle wrapper directly rather than a custom PowerShell, Bash, or Node helper script. This keeps the build path transparent and usable on Windows, macOS, and Linux.
 
-```bash
-npm run build:apk
+Windows PowerShell:
+
+```powershell
+cd android
+.\gradlew.bat assembleRelease
+cd ..
 ```
 
-Expected Gradle output:
+macOS / Linux:
+
+```bash
+cd android
+./gradlew assembleRelease
+cd ..
+```
+
+Equivalent npm shortcuts are provided only as thin wrappers around the same Gradle commands:
+
+```bash
+npm run build:apk:windows
+npm run build:apk:unix
+```
+
+Expected APK output:
 
 ```text
 android/app/build/outputs/apk/release/app-release.apk
@@ -91,6 +112,13 @@ If it is missing after a build:
 ```powershell
 New-Item -ItemType Directory -Force build
 Copy-Item android\app\build\outputs\apk\release\app-release.apk build\vizminder-a4.apk -Force
+```
+
+macOS / Linux equivalent:
+
+```bash
+mkdir -p build
+cp android/app/build/outputs/apk/release/app-release.apk build/vizminder-a4.apk
 ```
 
 ## Firebase Setup
@@ -161,11 +189,25 @@ Troubleshooting:
 
 Build the APK first:
 
-```bash
-npm run build:apk
+```powershell
+cd android
+.\gradlew.bat assembleRelease
+cd ..
+New-Item -ItemType Directory -Force build
+Copy-Item android\app\build\outputs\apk\release\app-release.apk build\vizminder-a4.apk -Force
 ```
 
-Then copy it to `build/vizminder-a4.apk` if needed and run:
+Or on macOS / Linux:
+
+```bash
+cd android
+./gradlew assembleRelease
+cd ..
+mkdir -p build
+cp android/app/build/outputs/apk/release/app-release.apk build/vizminder-a4.apk
+```
+
+Then run:
 
 ```bash
 npm run test:firebase-lab
@@ -223,7 +265,9 @@ Some OEM lock-screen policies can block direct full-screen display until the scr
 5. Native reminder changes must be tested on an installed APK, not only Expo Go.
 6. Run `npm test` before committing JavaScript logic changes.
 7. Run `npm run export:android` after React Native screen or dependency changes.
-8. Run `npm run build:apk` after native Android, permissions, package, or alarm changes.
+8. Run the Gradle wrapper directly after native Android, permissions, package, or alarm changes:
+   - Windows: `cd android; .\gradlew.bat assembleRelease; cd ..`
+   - macOS/Linux: `cd android && ./gradlew assembleRelease && cd ..`
 9. Update this README when build steps, Firebase setup, permissions, or package responsibilities change.
 
 ## Known Limitations

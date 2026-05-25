@@ -4,13 +4,14 @@
   "private": true,
   "main": "expo/AppEntry.js",
   "scripts": {
-    "start": "set __UNSAFE_EXPO_HOME_DIRECTORY=.expo-cache&& expo start",
-    "android": "set __UNSAFE_EXPO_HOME_DIRECTORY=.expo-cache&& expo start --android",
-    "web": "set __UNSAFE_EXPO_HOME_DIRECTORY=.expo-cache&& expo start --web",
+    "start": "expo start",
+    "android": "expo start --android",
+    "web": "expo start --web",
     "test": "jest",
     "export:android": "expo export --platform android --output-dir .expo-export-check",
     "prebuild:android": "expo prebuild --platform android",
-    "build:apk": "powershell -ExecutionPolicy Bypass -File scripts/build-local-apk.ps1",
+    "build:apk:windows": "cd android && gradlew.bat assembleRelease",
+    "build:apk:unix": "cd android && ./gradlew assembleRelease",
     "build:apk:eas": "eas build --platform android --profile preview",
     "test:firebase-lab": "gcloud firebase test android run --type robo --app ./build/vizminder-a4.apk --device model=MediumPhone.arm,version=35,locale=en,orientation=portrait"
   },
