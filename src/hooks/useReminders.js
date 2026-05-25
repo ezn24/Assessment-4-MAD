@@ -27,6 +27,7 @@ function normalizeReminder(reminder) {
     promptYesCount: Number(reminder.promptYesCount || 0),
     promptNoCount: Number(reminder.promptNoCount || 0),
     promptConfirmedCount: Number(reminder.promptConfirmedCount || 0),
+    priority: reminder.priority || "high",
     ringtone: reminder.ringtone || "alarm",
     important: Boolean(reminder.important),
     completed: Boolean(reminder.completed),

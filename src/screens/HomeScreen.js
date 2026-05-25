@@ -19,6 +19,12 @@ import Svg, { Circle } from "react-native-svg";
 // expo-haptics adds native tactile feedback to completion, toggle, and delete actions.
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import * as Battery from "expo-battery";
+import * as LocalAuthentication from "expo-local-authentication";
+import * as Location from "expo-location";
+import * as Network from "expo-network";
+import { Accelerometer, Gyroscope } from "expo-sensors";
+import * as Torch from "expo-torch";
 // expo-notifications schedules real local notifications when reminder time arrives.
 import * as Notifications from "expo-notifications";
 // Native date/time picker is kept as an escape hatch beside the custom Material-style picker.
@@ -53,6 +59,21 @@ const SUCCESS = "#146C2E";
 const DATE_DISPLAY_FORMAT = "yyyy/MM/dd";
 const DATE_INPUT_PLACEHOLDER = "yyyy/mm/dd";
 const REMINDER_CHANNEL_ID = "vizminder-a4-reminders";
+const PRIORITY_CHANNELS = {
+  high: "vizminder-a4-priority-high",
+  medium: "vizminder-a4-priority-medium",
+  low: "vizminder-a4-priority-low"
+};
+const PRIORITY_OPTIONS = [
+  ["high", "High", "Full-screen alarm and strong sound"],
+  ["medium", "Medium", "Standard sound notification"],
+  ["low", "Low", "Silent notification"]
+];
+const PRIORITY_META = {
+  high: { color: ERROR, icon: "flag", label: "High" },
+  medium: { color: "#7D5800", icon: "volume-high", label: "Medium" },
+  low: { color: MUTED, icon: "volume-off", label: "Low" }
+};
 const DEFAULT_SETTINGS = {
   themeMode: "light",
   followSystemColors: true,
@@ -177,6 +198,7 @@ function createDraftReminder() {
     promptYesCount: 0,
     promptNoCount: 0,
     promptConfirmedCount: 0,
+    priority: "high",
     ringtone: "alarm",
     important: true,
     completed: false,
@@ -199,6 +221,19 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const [undoDelete, setUndoDelete] = useState(null);
   const [celebrating, setCelebrating] = useState(false);
   const [authUser, setAuthUser] = useState(null);
+  const [deviceInfo, setDeviceInfo] = useState({
+    accelerometer: null,
+    battery: null,
+    biometricAvailable: false,
+    error: "",
+    gyroscope: null,
+    location: null,
+    locationPermission: "unknown",
+    loading: false,
+    network: null,
+    torchAvailable: false,
+    torchOn: false
+  });
   const settings = { ...DEFAULT_SETTINGS, ...appSettings };
   const activeScheme = settings.themeMode;
   const isDark = typeof isDarkOverride === "boolean" ? isDarkOverride : activeScheme === "dark";
@@ -208,6 +243,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const firstReminder = reminders[0];
   const activeReminder = reminding || firstReminder;
   const completedCount = useMemo(() => reminders.filter((item) => item.completed).length, [reminders]);
+  const activeTaskCount = useMemo(() => reminders.filter((item) => !item.completed).length, [reminders]);
 
   const handleTabChange = (nextTab) => {
     if (nextTab === tab) {
@@ -226,6 +262,112 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   useEffect(() => {
     return listenToAuthState(setAuthUser);
   }, []);
+
+  const refreshDeviceInfo = async ({ requestLocation = false } = {}) => {
+    setDeviceInfo((current) => ({ ...current, loading: true }));
+    const errors = [];
+    const [powerState, batteryLevel, batteryState, networkState, locationPermission] = await Promise.all([
+      Battery.getPowerStateAsync().catch((error) => {
+        errors.push(`Battery: ${error?.message || "unavailable"}`);
+        return null;
+      }),
+      Battery.getBatteryLevelAsync().catch(() => null),
+      Battery.getBatteryStateAsync().catch(() => null),
+      Network.getNetworkStateAsync().catch((error) => {
+        errors.push(`Network: ${error?.message || "unavailable"}`);
+        return null;
+      }),
+      requestLocation
+        ? Location.requestForegroundPermissionsAsync().catch((error) => {
+            errors.push(`Location permission: ${error?.message || "denied"}`);
+            return { granted: false, status: "denied" };
+          })
+        : Location.getForegroundPermissionsAsync().catch(() => ({ granted: false, status: "unknown" }))
+    ]);
+    const [biometricAvailable, torchAvailable] = await Promise.all([
+      LocalAuthentication.hasHardwareAsync().then(async (hardware) => hardware && (await LocalAuthentication.isEnrolledAsync())).catch(() => false),
+      Torch.isAvailableAsync().catch(() => false)
+    ]);
+    let location = null;
+    if (locationPermission?.granted) {
+      location =
+        (await Location.getLastKnownPositionAsync().catch(() => null)) ||
+        (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch((error) => {
+          errors.push(`Location: ${error?.message || "unavailable"}`);
+          return null;
+        }));
+    }
+    const resolvedBatteryLevel = powerState?.batteryLevel ?? batteryLevel;
+    const resolvedBatteryState = powerState?.batteryState ?? batteryState;
+    setDeviceInfo((current) => ({
+      ...current,
+      battery:
+        resolvedBatteryLevel == null
+          ? { level: null, charging: false, lowPowerMode: Boolean(powerState?.lowPowerMode), state: resolvedBatteryState ?? Battery.BatteryState.UNKNOWN }
+          : {
+              charging: resolvedBatteryState === Battery.BatteryState.CHARGING || resolvedBatteryState === Battery.BatteryState.FULL,
+              level: Math.round(resolvedBatteryLevel * 100),
+              lowPowerMode: Boolean(powerState?.lowPowerMode),
+              state: resolvedBatteryState
+            },
+      network: networkState,
+      biometricAvailable,
+      error: errors.join("\n"),
+      location,
+      locationPermission: locationPermission?.status || (locationPermission?.granted ? "granted" : "unknown"),
+      loading: false,
+      torchAvailable,
+      torchOn: current.torchOn
+    }));
+  };
+
+  useEffect(() => {
+    refreshDeviceInfo();
+  }, []);
+
+  const readDeviceSensor = async (type) => {
+    const Sensor = type === "accelerometer" ? Accelerometer : Gyroscope;
+    const available = await Sensor.isAvailableAsync().catch(() => false);
+    if (!available) {
+      setMessage(`${type === "accelerometer" ? "Accelerometer" : "Gyroscope"} is not available.`);
+      return;
+    }
+    Sensor.setUpdateInterval(450);
+    const sample = await new Promise((resolve) => {
+      const subscription = Sensor.addListener((data) => {
+        subscription.remove();
+        resolve(data);
+      });
+      setTimeout(() => {
+        subscription.remove();
+        resolve(null);
+      }, 1200);
+    });
+    setDeviceInfo((current) => ({ ...current, [type]: sample }));
+  };
+
+  const toggleDeviceTorch = async () => {
+    const available = await Torch.isAvailableAsync().catch(() => false);
+    if (!available) {
+      setMessage("Torch is not available on this device.");
+      return;
+    }
+    const next = !deviceInfo.torchOn;
+    await Torch.setStateAsync(next).catch(() => setMessage("Torch toggle failed."));
+    setDeviceInfo((current) => ({ ...current, torchAvailable: true, torchOn: next }));
+  };
+
+  const authenticateDevice = async () => {
+    const available = await LocalAuthentication.hasHardwareAsync()
+      .then(async (hardware) => hardware && (await LocalAuthentication.isEnrolledAsync()))
+      .catch(() => false);
+    if (!available) {
+      setMessage("Biometric authentication is not available.");
+      return;
+    }
+    const result = await LocalAuthentication.authenticateAsync({ promptMessage: "Unlock VizMinder device check" }).catch(() => null);
+    setMessage(result?.success ? "Biometric check passed." : "Biometric check cancelled.");
+  };
 
   useEffect(() => {
     if (!authUser || authUser.isAnonymous || authUser.uid === "offline-user" || authUser.uid === lastCloudUserRef.current) {
@@ -247,7 +389,7 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     }
     const scheduledReminder = settings.followUpNotifications === false ? { ...reminder, followUpEnabled: false, followUpCount: 0 } : reminder;
     const notificationId = await scheduleReminderNotification(scheduledReminder, settings);
-    if (Platform.OS === "android" && settings.fullScreenAlerts !== false) {
+    if (Platform.OS === "android" && settings.fullScreenAlerts !== false && (scheduledReminder.priority || "high") === "high") {
       await scheduleNativeAlarm({
         ...scheduledReminder,
         notificationId,
@@ -612,13 +754,18 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
                   onUpdateSettings={updateSettings}
                   isDark={isDark}
                   palette={palette}
+                  deviceInfo={deviceInfo}
+                  onAuthenticateDevice={authenticateDevice}
+                  onRefreshDevice={() => refreshDeviceInfo({ requestLocation: true })}
+                  onReadDeviceSensor={readDeviceSensor}
+                  onToggleDeviceTorch={toggleDeviceTorch}
                   onReset={confirmResetReminders}
                   onResetStats={confirmResetStats}
                   onMessage={setMessage}
                 />
               )}
             </Animatable.View>
-            <BottomNav active={tab} isDark={isDark} palette={palette} taskCount={reminders.length} onChange={handleTabChange} />
+            <BottomNav active={tab} isDark={isDark} palette={palette} taskCount={activeTaskCount} onChange={handleTabChange} />
           </>
         )}
       </KeyboardAvoidingView>
@@ -660,12 +807,33 @@ function ScreenTitle({ children, action, isDark = false }) {
 function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderDebugButton, isDark, themeColors = {}, palette, onEdit, onToggle, onAdd, onDelete }) {
   const [query, setQuery] = useState("");
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [filterMode, setFilterMode] = useState("pending");
   const colors = palette || getPalette(themeColors, isDark);
   const primary = colors.primary;
+  const today = format(new Date(), "yyyy-MM-dd");
+  const totalCount = reminders.length;
+  const completedCount = reminders.filter((reminder) => reminder.completed).length;
+  const pendingCount = totalCount - completedCount;
+  const todayCount = reminders.filter((reminder) => format(parseISO(reminder.scheduledAt), "yyyy-MM-dd") === today).length;
+  const completionPct = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
   const visibleReminders = reminders.filter((reminder) => {
     const haystack = `${reminder.title} ${reminder.description || ""}`.toLowerCase();
-    return haystack.includes(query.trim().toLowerCase());
+    const matchesQuery = haystack.includes(query.trim().toLowerCase());
+    if (!matchesQuery) return false;
+    if (filterMode === "today") return format(parseISO(reminder.scheduledAt), "yyyy-MM-dd") === today;
+    if (filterMode === "pending") return !reminder.completed;
+    if (filterMode === "done") return reminder.completed;
+    return true;
+  }).sort((a, b) => {
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
   });
+  const filterChips = [
+    { key: "all", label: "All", icon: "view-grid-outline", count: totalCount },
+    { key: "pending", label: "Pending", icon: "clock-outline", count: pendingCount },
+    { key: "today", label: "Today", icon: "calendar-today", count: todayCount },
+    { key: "done", label: "Done", icon: "check-circle-outline", count: completedCount }
+  ];
 
   useEffect(() => {
     const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
@@ -682,6 +850,45 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Tasks</ScreenTitle>
       <ScrollView style={styles.flex} contentContainerStyle={styles.homeList}>
+        <Animatable.View animation="slideInDown" duration={430} useNativeDriver>
+          <View style={[styles.heroBanner, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+            <View style={[styles.heroBannerAccent, { backgroundColor: colors.primary }]} />
+            <View style={styles.heroBannerRow}>
+              <View style={styles.heroBannerCopy}>
+                <Text style={[styles.heroBannerEyebrow, { color: colors.primary }]}>{format(new Date(), "EEEE, MMM d")}</Text>
+                <Text style={[styles.heroBannerTitle, isDark && styles.textOnDark]}>
+                  {pendingCount === 0 ? "All caught up" : pendingCount === 1 ? "1 task pending" : `${pendingCount} tasks pending`}
+                </Text>
+                <Text style={[styles.heroBannerSubtitle, isDark && styles.mutedOnDark]}>{completedCount} of {totalCount} completed</Text>
+              </View>
+              <View style={[styles.heroRing, { borderColor: colors.surfaceVariant }]}>
+                <Text style={[styles.heroRingValue, { color: colors.primary }]}>{completionPct}%</Text>
+                <Text style={[styles.heroRingLabel, isDark && styles.mutedOnDark]}>done</Text>
+              </View>
+            </View>
+            <View style={[styles.heroProgressTrack, { backgroundColor: colors.surfaceVariant }]}>
+              <View style={[styles.heroProgressFill, { width: `${completionPct}%`, backgroundColor: colors.primary }]} />
+            </View>
+          </View>
+        </Animatable.View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow}>
+          {filterChips.map((chip) => {
+            const active = filterMode === chip.key;
+            return (
+              <Pressable
+                key={chip.key}
+                style={[styles.filterChip, { backgroundColor: active ? colors.primary : colors.surface, borderColor: active ? colors.primary : colors.outline }]}
+                onPress={() => setFilterMode(chip.key)}
+              >
+                <MaterialCommunityIcons name={chip.icon} size={14} color={active ? colors.onPrimary : colors.onSurfaceVariant} />
+                <Text style={[styles.filterChipText, { color: active ? colors.onPrimary : colors.onSurface }]}>{chip.label}</Text>
+                <View style={[styles.filterChipCount, { backgroundColor: active ? "rgba(255,255,255,0.22)" : colors.surfaceVariant }]}>
+                  <Text style={[styles.filterChipCountText, { color: active ? colors.onPrimary : colors.onSurfaceVariant }]}>{chip.count}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
         {!loaded ? (
           <View style={styles.emptyHome}>
             <View style={[styles.emptyVisual, { backgroundColor: colors.primaryContainer }]}>
@@ -701,6 +908,10 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
         ) : null}
         {visibleReminders.map((reminder, index) => (
           <Animatable.View key={reminder.id} animation="slideInUp" delay={index * 45} duration={420} useNativeDriver>
+            {(() => {
+              const priorityMeta = PRIORITY_META[reminder.priority || "high"] || PRIORITY_META.high;
+              return (
+                <>
             {/* react-native-gesture-handler gives this list a native-feeling swipe delete gesture. */}
             <Swipeable
               overshootRight={false}
@@ -710,8 +921,9 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                 />
               )}
             >
-            <Pressable style={[styles.taskRow, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]} onPress={() => onEdit(reminder)}>
-              <View style={styles.visualBubble}>
+            <Pressable style={[styles.taskRow, { backgroundColor: colors.surface, borderColor: reminder.completed ? colors.outline : colors.primary }, isDark && styles.cardOnDark, reminder.completed && styles.taskRowDone]} onPress={() => onEdit(reminder)}>
+              <View style={[styles.taskAccent, { backgroundColor: reminder.completed ? colors.outline : colors.primary }]} />
+              <View style={[styles.visualBubble, { backgroundColor: isDark ? `${colors.primary}22` : `${colors.primary}14` }]}>
                 <VisualCue reminder={reminder} size={44} iconSize={22} compact palette={colors} />
               </View>
               <View style={styles.taskCopy}>
@@ -720,6 +932,18 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                 </Text>
                 <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
                 {reminder.description ? <Text style={[styles.taskDescription, isDark && styles.mutedOnDark]}>{reminder.description}</Text> : null}
+                <View style={styles.taskBadgesRow}>
+                  <View style={[styles.taskMetaBadge, { backgroundColor: `${priorityMeta.color}18`, borderColor: priorityMeta.color }]}>
+                    <MaterialCommunityIcons name={priorityMeta.icon} size={10} color={priorityMeta.color} />
+                    <Text style={[styles.taskMetaBadgeText, { color: priorityMeta.color }]}>{priorityMeta.label}</Text>
+                  </View>
+                  {reminder.important ? (
+                    <View style={[styles.taskMetaBadge, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
+                      <MaterialCommunityIcons name="star" size={10} color={colors.primary} />
+                      <Text style={[styles.taskMetaBadgeText, { color: colors.primary }]}>Important</Text>
+                    </View>
+                  ) : null}
+                </View>
               </View>
               <View style={styles.taskActions}>
               {showReminderDebugButton ? (
@@ -727,10 +951,18 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
                   <MaterialCommunityIcons name="play-circle-outline" size={22} color={primary} />
                 </Pressable>
               ) : null}
-                <Switch value={!reminder.completed} color={primary} onValueChange={(value) => onToggle(reminder, !value)} />
+                <Pressable
+                  style={[styles.completeButton, { backgroundColor: reminder.completed ? SUCCESS : `${primary}1F`, borderColor: reminder.completed ? SUCCESS : primary }]}
+                  onPress={() => onToggle(reminder, !reminder.completed)}
+                >
+                  <MaterialCommunityIcons name={reminder.completed ? "check" : "checkbox-blank-circle-outline"} size={20} color={reminder.completed ? "#FFFFFF" : primary} />
+                </Pressable>
               </View>
             </Pressable>
             </Swipeable>
+                </>
+              );
+            })()}
           </Animatable.View>
         ))}
 
@@ -758,10 +990,10 @@ function HomeTab({ reminders, loaded, markedDates, onTestReminder, showReminderD
           placeholderTextColor={colors.onSurfaceVariant}
           theme={{ colors: { primary, onSurfaceVariant: colors.onSurfaceVariant } }}
         />
-        <Pressable style={[styles.addButton, { backgroundColor: primary }]} onPress={onAdd}>
-          <MaterialCommunityIcons name="plus" size={26} color="#FFFFFF" />
-        </Pressable>
       </Animatable.View>
+      <Pressable style={[styles.floatingAddButton, { backgroundColor: primary, bottom: keyboardHeight ? keyboardHeight + 86 : 166 }]} onPress={onAdd}>
+        <MaterialCommunityIcons name="plus" size={28} color="#FFFFFF" />
+      </Pressable>
     </View>
   );
 }
@@ -771,6 +1003,10 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [visibleMonth, setVisibleMonth] = useState(format(new Date(), "yyyy-MM"));
   const selectedReminders = reminders.filter((reminder) => shouldShowReminderOnDate(reminder, selectedDate));
+  const activeTasks = reminders.filter((reminder) => !reminder.completed).length;
+  const repeatTasks = reminders.filter((reminder) => reminder.repeat).length;
+  const importantTasks = reminders.filter((reminder) => reminder.important).length;
+  const selectedDateLabel = format(parseISO(selectedDate), DATE_DISPLAY_FORMAT);
   const scheduleMarkedDates = buildScheduleMarkedDates(reminders, visibleMonth, colors.primary);
   const selectedMarkedDates = {
     ...markedDates,
@@ -787,9 +1023,43 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Schedule</ScreenTitle>
       <ScrollView contentContainerStyle={styles.scheduleContent}>
+        <Animatable.View animation="fadeInDown" duration={500} useNativeDriver>
+          <View style={[styles.scheduleHeroCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+            <View style={styles.scheduleHeroRow}>
+              <View style={styles.scheduleHeroCopy}>
+                <Text style={[styles.statsHeroEyebrow, { color: colors.primary }]}>Calendar focus</Text>
+                <Text style={[styles.statsHeroTitle, isDark && styles.textOnDark]}>{selectedReminders.length ? selectedDateLabel : "Pick a day"}</Text>
+                <Text style={[styles.statsHeroSubtitle, isDark && styles.mutedOnDark]}>
+                  {selectedReminders.length} tasks on selected day
+                </Text>
+              </View>
+              <View style={[styles.scheduleHeroBadge, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
+                <Text style={[styles.scheduleHeroBadgeValue, { color: colors.primary }]}>{activeTasks}</Text>
+                <Text style={[styles.scheduleHeroBadgeLabel, isDark && styles.mutedOnDark]}>active</Text>
+              </View>
+            </View>
+            <View style={styles.statsHeroMetaRow}>
+              <View style={styles.statsHeroMetaItem}>
+                <MaterialCommunityIcons name="repeat" size={16} color={colors.onSurfaceVariant} />
+                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{repeatTasks} repeat</Text>
+              </View>
+              <View style={styles.statsHeroMetaItem}>
+                <MaterialCommunityIcons name="star" size={16} color={colors.onSurfaceVariant} />
+                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{importantTasks} important</Text>
+              </View>
+              <View style={styles.statsHeroMetaItem}>
+                <MaterialCommunityIcons name="calendar-check" size={16} color={colors.onSurfaceVariant} />
+                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{reminders.length} total</Text>
+              </View>
+            </View>
+          </View>
+        </Animatable.View>
         <Animatable.View animation="slideInUp" duration={440} delay={60} useNativeDriver>
-        <View style={[styles.materialCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Month task distribution</Text>
+        <View style={[styles.modernPanelCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+          <View style={styles.panelHeaderRow}>
+            <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Month task distribution</Text>
+            <MaterialCommunityIcons name="calendar-month" size={22} color={colors.primary} />
+          </View>
           <Calendar
             markedDates={selectedMarkedDates}
             onDayPress={(day) => setSelectedDate(day.dateString)}
@@ -811,11 +1081,15 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
         </View>
         </Animatable.View>
         <Animatable.View animation="slideInUp" duration={440} delay={150} useNativeDriver>
-        <View style={[styles.materialCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>{format(parseISO(selectedDate), DATE_DISPLAY_FORMAT)} reminders</Text>
+        <View style={[styles.modernPanelCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+          <View style={styles.panelHeaderRow}>
+            <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>{selectedDateLabel}</Text>
+            <Text style={[styles.panelHeaderMeta, { color: colors.primary }]}>{selectedReminders.length} tasks</Text>
+          </View>
           {selectedReminders.length ? (
-            selectedReminders.map((reminder) => (
-              <Pressable key={reminder.id} style={styles.scheduleRow} onPress={() => onEdit(reminder)}>
+            selectedReminders.map((reminder, index) => (
+              <Animatable.View key={reminder.id} animation="fadeInRight" duration={360} delay={index * 55} useNativeDriver>
+              <Pressable style={[styles.scheduleTaskRow, { borderColor: colors.outline }]} onPress={() => onEdit(reminder)}>
                 <VisualCue reminder={reminder} size={44} iconSize={22} compact palette={colors} />
                 <View style={styles.scheduleCopy}>
                   <Text style={[styles.taskTitle, isDark && styles.textOnDark]}>{reminder.title}</Text>
@@ -825,6 +1099,7 @@ function ScheduleTab({ markedDates, reminders, isDark, palette, onEdit }) {
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
               </Pressable>
+              </Animatable.View>
             ))
           ) : (
             <View style={styles.emptySchedule}>
@@ -851,6 +1126,10 @@ function StatsTab({ reminders, isDark, palette }) {
     { yes: 0, no: 0, confirmed: 0 }
   );
   const totalResponses = totals.yes + totals.no + totals.confirmed;
+  const totalTasks = reminders.length;
+  const completedTasks = reminders.filter((reminder) => reminder.completed).length;
+  const completionRate = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const importantTasks = reminders.filter((reminder) => reminder.important).length;
   const riskRows = reminders
     .map((reminder) => {
       const yes = Number(reminder.promptYesCount || 0);
@@ -877,9 +1156,49 @@ function StatsTab({ reminders, isDark, palette }) {
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Stats</ScreenTitle>
       <ScrollView contentContainerStyle={styles.statsContent}>
-        <Animatable.View animation="slideInUp" duration={460} delay={60} useNativeDriver>
-          <View style={[styles.statsHero, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-            <Text style={[styles.statsHeroLabel, { color: colors.primary }]}>Reminder memory signal</Text>
+        <Animatable.View animation="fadeInDown" duration={500} useNativeDriver>
+          <View style={[styles.statsHeroCard, { backgroundColor: colors.surface, borderColor: colors.primary }, isDark && styles.cardOnDark]}>
+            <View style={styles.statsHeroRow}>
+              <View style={styles.statsHeroCopyWrap}>
+                <Text style={[styles.statsHeroEyebrow, { color: colors.primary }]}>Memory signal</Text>
+                <Text style={[styles.statsHeroTitle, isDark && styles.textOnDark]}>
+                  {completionRate >= 75 ? "Strong task momentum" : completionRate >= 40 ? "Building consistency" : "Early reminder signal"}
+                </Text>
+                <Text style={[styles.statsHeroSubtitle, isDark && styles.mutedOnDark]}>
+                  {completedTasks} of {totalTasks} tasks completed
+                </Text>
+              </View>
+              <View style={[styles.statsHeroRing, { borderColor: colors.primary, backgroundColor: `${colors.primary}16` }]}>
+                <Text style={[styles.statsHeroRingValue, { color: colors.primary }]}>{completionRate}%</Text>
+              </View>
+            </View>
+            <View style={[styles.statsHeroProgressTrack, { backgroundColor: colors.surfaceVariant }]}>
+              <Animatable.View
+                animation="fadeInLeft"
+                duration={760}
+                style={[styles.statsHeroProgressFill, { width: `${completionRate}%`, backgroundColor: colors.primary }]}
+                useNativeDriver={false}
+              />
+            </View>
+            <View style={styles.statsHeroMetaRow}>
+              <View style={styles.statsHeroMetaItem}>
+                <MaterialCommunityIcons name="bell-check" size={16} color={colors.onSurfaceVariant} />
+                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{totalResponses} responses</Text>
+              </View>
+              <View style={styles.statsHeroMetaItem}>
+                <MaterialCommunityIcons name="star" size={16} color={colors.onSurfaceVariant} />
+                <Text style={[styles.statsHeroMetaText, isDark && styles.mutedOnDark]}>{importantTasks} important</Text>
+              </View>
+            </View>
+          </View>
+        </Animatable.View>
+
+        <Animatable.View animation="fadeInUp" duration={460} delay={80} useNativeDriver>
+          <View style={[styles.modernPanelCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+            <View style={styles.panelHeaderRow}>
+              <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Response</Text>
+              <Text style={[styles.panelHeaderMeta, { color: colors.primary }]}>{totalResponses} total</Text>
+            </View>
             <StatPieChart
               totals={totals}
               colors={{
@@ -903,16 +1222,18 @@ function StatsTab({ reminders, isDark, palette }) {
 
         <View style={styles.statsCardGrid}>
           {cards.map(([label, value, icon, color], index) => (
-            <Animatable.View key={label} animation="slideInUp" delay={140 + index * 70} duration={420} style={[styles.statsMiniCard, { backgroundColor: colors.surface, borderColor: colors.outline }]} useNativeDriver>
-              <MaterialCommunityIcons name={icon} size={24} color={color} />
+            <Animatable.View key={label} animation="fadeInUp" delay={140 + index * 70} duration={420} style={[styles.statsMiniCard, { backgroundColor: colors.surface, borderColor: colors.outline }]} useNativeDriver>
+              <View style={[styles.statsCardIcon, { backgroundColor: `${color}18` }]}>
+                <MaterialCommunityIcons name={icon} size={24} color={color} />
+              </View>
               <Text style={[styles.statsMiniValue, { color }]}>{value}</Text>
               <Text style={[styles.statsMiniLabel, isDark && styles.mutedOnDark]}>{label}</Text>
             </Animatable.View>
           ))}
         </View>
 
-        <Animatable.View animation="slideInUp" duration={440} delay={260} useNativeDriver>
-        <View style={[styles.materialCard, styles.statsInsightCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+        <Animatable.View animation="fadeInUp" duration={440} delay={260} useNativeDriver>
+        <View style={[styles.modernPanelCard, styles.statsInsightCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
           <Text style={[styles.sectionTitle, styles.statsInsightTitle, isDark && styles.textOnDark]}>Likely forgettable tasks</Text>
           <Text style={[styles.statsInsightCopy, isDark && styles.mutedOnDark]}>
             Tasks with more No taps or unconfirmed Yes taps appear here first.
@@ -951,8 +1272,8 @@ function LegendDot({ color, label, isDark }) {
 }
 
 function StatPieChart({ totals, colors }) {
-  const size = 156;
-  const strokeWidth = 18;
+  const size = 132;
+  const strokeWidth = 15;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const total = totals.confirmed + totals.yes + totals.no;
@@ -1118,6 +1439,16 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
       })).concat([{ text: "Cancel", style: "cancel" }])
     );
   };
+  const openPriorityPicker = () => {
+    Alert.alert(
+      "Priority",
+      "Choose how this task should notify you.",
+      PRIORITY_OPTIONS.map(([value, label, description]) => ({
+        text: `${label} - ${description}`,
+        onPress: () => onUpdate({ priority: value })
+      })).concat([{ text: "Cancel", style: "cancel" }])
+    );
+  };
   const openRepeatUntilPicker = () => {
     if (Platform.OS === "android") {
       DateTimePickerAndroid.open({
@@ -1163,6 +1494,7 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
     );
   };
   const ringtoneLabel = RINGTONE_OPTIONS.find(([value]) => value === reminder.ringtone)?.[1] || "System alarm";
+  const priorityLabel = PRIORITY_OPTIONS.find(([value]) => value === (reminder.priority || "high"))?.[1] || "High";
   return (
     <Animatable.View animation="fadeInUp" duration={240} style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
       <ScreenTitle isDark={isDark}>{mode === "add" ? "Add Task" : "Edit Task"}</ScreenTitle>
@@ -1200,6 +1532,13 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onAttachIma
           value={reminder.hasDate === false ? "Optional" : format(parseISO(reminder.scheduledAt), DATE_DISPLAY_FORMAT)}
           onPress={openDatePicker}
           onClear={() => onUpdate({ hasDate: false })}
+        />
+        <EditField
+          isDark={isDark}
+          palette={colors}
+          label="Priority"
+          value={priorityLabel}
+          onPress={openPriorityPicker}
         />
         <EditField
           isDark={isDark}
@@ -1515,64 +1854,111 @@ function AccountTab({ reminders, authUser, completedCount, isDark, palette, onSy
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]}>
       <ScreenTitle isDark={isDark}>Account</ScreenTitle>
-      <Animatable.View animation="slideInUp" duration={430} delay={60} useNativeDriver>
-      <View style={[styles.accountCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
-        <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
-          <MaterialCommunityIcons name="account-outline" size={36} color={colors.primary} />
-        </View>
-        <View>
-          <Text style={[styles.accountName, isDark && styles.textOnDark]}>User</Text>
-          <Text style={[styles.accountPlan, isDark && styles.textOnDark]}>{accountLabel}</Text>
-        </View>
-      </View>
-      </Animatable.View>
       <ScrollView contentContainerStyle={styles.accountContent}>
+        <Animatable.View animation="fadeInDown" duration={500} useNativeDriver>
+          <View style={[styles.modernAccountCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+            <View style={[styles.accountTint, { backgroundColor: `${colors.primary}12` }]} pointerEvents="none" />
+            <Animatable.View animation="zoomIn" duration={500} useNativeDriver style={[styles.accountAvatar, { backgroundColor: `${colors.primary}25`, borderColor: `${colors.primary}40` }]}>
+              <MaterialCommunityIcons name="account-circle" size={52} color={colors.primary} />
+            </Animatable.View>
+            <View style={styles.accountInfo}>
+              <Text style={[styles.accountNameModern, isDark && styles.textOnDark]}>{signedIn ? "Welcome back" : "Guest user"}</Text>
+              <Text style={[styles.accountEmail, isDark && styles.mutedOnDark]} numberOfLines={1}>{accountLabel}</Text>
+              <View style={[styles.accountStatusBadge, { backgroundColor: signedIn ? `${SUCCESS}20` : `${colors.onSurfaceVariant}20` }]}>
+                <MaterialCommunityIcons name={signedIn ? "check-circle" : "alert-circle"} size={14} color={signedIn ? SUCCESS : colors.onSurfaceVariant} />
+                <Text style={[styles.accountStatusText, { color: signedIn ? SUCCESS : colors.onSurfaceVariant }]}>
+                  {signedIn ? "Connected" : "Offline"}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </Animatable.View>
+
         {!signedIn ? (
-          <Animatable.View animation="slideInUp" duration={430} delay={140} style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]} useNativeDriver>
-            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sign in</Text>
-            <TextInput value={email} onChangeText={setEmail} label="Email" autoCapitalize="none" keyboardType="email-address" style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
-            <TextInput value={password} onChangeText={setPassword} label="Password" secureTextEntry style={[styles.authInput, { backgroundColor: colors.surfaceVariant }]} textColor={colors.onSurface} />
+          <Animatable.View animation="fadeInUp" duration={500} delay={100} useNativeDriver>
+          <View style={[styles.modernAuthCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+            <View style={styles.authHeader}>
+              <MaterialCommunityIcons name="login" size={32} color={colors.primary} />
+              <Text style={[styles.authTitle, isDark && styles.textOnDark]}>Sign in</Text>
+              <Text style={[styles.authSubtitle, isDark && styles.mutedOnDark]}>Sync tasks and response stats across devices</Text>
+            </View>
+            <TextInput value={email} onChangeText={setEmail} label="Email" autoCapitalize="none" keyboardType="email-address" mode="outlined" style={styles.authInput} textColor={colors.onSurface} outlineColor={colors.outline} activeOutlineColor={colors.primary} />
+            <TextInput value={password} onChangeText={setPassword} label="Password" secureTextEntry mode="outlined" style={styles.authInput} textColor={colors.onSurface} outlineColor={colors.outline} activeOutlineColor={colors.primary} />
             <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Password requires at least 8 characters, 2 letters, and 6 numbers.</Text>
             {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
-            <View style={styles.planActions}>
-              <Button mode="outlined" textColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("login")}>Login</Button>
-              <Button mode="contained" buttonColor={colors.primary} style={styles.planButton} onPress={() => submitEmailAuth("register")}>Register</Button>
+            <View style={styles.authActions}>
+              <Button mode="outlined" textColor={colors.primary} style={styles.authButton} onPress={() => submitEmailAuth("login")} icon="login">Login</Button>
+              <Button mode="contained" buttonColor={colors.primary} style={styles.authButton} onPress={() => submitEmailAuth("register")} icon="account-plus">Register</Button>
             </View>
+          </View>
           </Animatable.View>
         ) : (
-          <Animatable.View animation="slideInUp" duration={430} delay={140} style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]} useNativeDriver>
-            <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Signed in</Text>
-            <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>{accountLabel}</Text>
+          <Animatable.View animation="fadeInUp" duration={500} delay={100} useNativeDriver>
+          <View style={[styles.modernAuthCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+            <View style={styles.authHeader}>
+              <MaterialCommunityIcons name="cloud-check" size={32} color={SUCCESS} />
+              <Text style={[styles.authTitle, isDark && styles.textOnDark]}>Cloud Sync</Text>
+              <Text style={[styles.authSubtitle, isDark && styles.mutedOnDark]}>Keep tasks and Stats aligned with Firestore</Text>
+            </View>
+            <View style={styles.syncStats}>
+              <View style={styles.syncStatItem}>
+                <Text style={[styles.syncStatValue, { color: colors.primary }]}>{completedCount}</Text>
+                <Text style={[styles.syncStatLabel, isDark && styles.mutedOnDark]}>Completed</Text>
+              </View>
+              <View style={styles.syncStatItem}>
+                <Text style={[styles.syncStatValue, { color: colors.primary }]}>{reminders.length}</Text>
+                <Text style={[styles.syncStatLabel, isDark && styles.mutedOnDark]}>Total</Text>
+              </View>
+            </View>
             {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
-            <Button mode="outlined" textColor={colors.primary} onPress={() => signOutUser().catch((error) => setSyncError(error.message))}>Sign out</Button>
+            <View style={[styles.syncProgressContainer, { backgroundColor: colors.surfaceVariant }]}>
+              <View style={[styles.syncProgressBar, { backgroundColor: colors.primary, width: `${Math.round(syncProgress * 100)}%` }]} />
+            </View>
+            <Button mode="contained" buttonColor={colors.primary} loading={syncing} disabled={syncing} onPress={runSync} style={styles.syncButton} icon="cloud-sync">
+              {syncing ? "Syncing..." : "Sync now"}
+            </Button>
+            <Button mode="outlined" textColor={colors.error} onPress={() => signOutUser().catch((error) => setSyncError(error.message))} style={styles.signOutButton} icon="logout">
+              Sign out
+            </Button>
+          </View>
           </Animatable.View>
         )}
 
-        {signedIn ? (
-        <Animatable.View animation="slideInUp" duration={430} delay={220} style={[styles.planBlock, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]} useNativeDriver>
-          <Text style={[styles.planTitle, isDark && styles.textOnDark]}>Sync Data</Text>
-          <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Completed reminders: {completedCount}</Text>
-          <Text style={[styles.planCopy, isDark && styles.mutedOnDark]}>Sync status: {syncing ? "Syncing" : syncProgress === 1 ? "Synced" : "Idle"}</Text>
-          <View style={[styles.progressTrack, { backgroundColor: colors.surfaceVariant }]}>
-            <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.round(syncProgress * 100)}%` }]} />
-          </View>
-          <Button mode="contained" buttonColor={colors.primary} loading={syncing} disabled={syncing} onPress={runSync}>Sync now</Button>
-          <View style={styles.syncList}>
-            {syncRows.length ? syncRows.map((row) => (
-              <View key={row.id} style={styles.syncRow}>
-                <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>{row.title}</Text>
-                <Text style={[styles.syncStatus, row.status === "Synced" ? styles.syncOk : styles.syncWarn]}>{row.status}</Text>
-              </View>
-            )) : <Text style={[styles.packageText, isDark && styles.mutedOnDark]}>Press sync to inspect current Firestore status.</Text>}
-          </View>
-        </Animatable.View>
+        {signedIn && syncRows.length > 0 ? (
+          <Animatable.View animation="fadeInUp" duration={500} delay={200} useNativeDriver>
+            <View style={[styles.modernSyncListCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}>
+              <Text style={[styles.syncListTitle, isDark && styles.textOnDark]}>Sync Status</Text>
+              {syncRows.map((row) => (
+                <View key={row.id} style={styles.syncListItem}>
+                  <Text style={[styles.syncListItemText, isDark && styles.mutedOnDark]} numberOfLines={1}>{row.title}</Text>
+                  <View style={[styles.syncListBadge, { backgroundColor: row.status === "Synced" ? `${SUCCESS}20` : "#FF950020" }]}>
+                    <MaterialCommunityIcons name={row.status === "Synced" ? "check" : "alert"} size={14} color={row.status === "Synced" ? SUCCESS : "#FF9500"} />
+                    <Text style={[styles.syncListBadgeText, { color: row.status === "Synced" ? SUCCESS : "#FF9500" }]}>{row.status}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </Animatable.View>
         ) : null}
       </ScrollView>
     </View>
   );
 }
 
-function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onResetStats, onMessage }) {
+function SettingsTab({
+  settings,
+  onUpdateSettings,
+  isDark,
+  palette,
+  deviceInfo,
+  onAuthenticateDevice,
+  onReadDeviceSensor,
+  onRefreshDevice,
+  onToggleDeviceTorch,
+  onReset,
+  onResetStats,
+  onMessage
+}) {
   const colors = palette || getPalette({}, isDark);
   const [settingsPage, setSettingsPage] = useState("main");
   const [settingsDirection, setSettingsDirection] = useState("forward");
@@ -1595,10 +1981,11 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onR
     return () => backSubscription.remove();
   }, [settingsPage]);
   const items = [
-    ["palette-outline", "Theme", "Light, dark, and Material color options.", () => openSettingsPage("theme")],
-    ["tune-vertical", "Advanced", "Debug controls and native alarm notes.", () => openSettingsPage("advanced")],
-    ["message-outline", "Notification", "Notification permissions, alert sound, and system settings.", () => openSettingsPage("notification")],
-    ["restart", "Reset", "Clear task data or reset stats separately.", () => openSettingsPage("reset")]
+    ["palette-outline", colors.primary, "Theme", "Light, dark, and Material color options.", () => openSettingsPage("theme")],
+    ["tune-vertical", colors.secondary || colors.primary, "Advanced", "Debug controls and native alarm notes.", () => openSettingsPage("advanced")],
+    ["devices", "#34C759", "Device", "Battery, network, location, and sensors.", () => openSettingsPage("device")],
+    ["message-outline", "#FF9500", "Notification", "Permissions, alert sound, and system settings.", () => openSettingsPage("notification")],
+    ["restart", colors.error, "Reset", "Clear task data or reset stats separately.", () => openSettingsPage("reset")]
   ];
 
   if (settingsPage === "theme") {
@@ -1710,6 +2097,29 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onR
     );
   }
 
+  if (settingsPage === "device") {
+    return (
+      <SettingsPageMotion page={settingsPage} direction={settingsDirection} colors={colors} isDark={isDark}>
+        <ScreenTitle isDark={isDark}>Device</ScreenTitle>
+        <ScrollView contentContainerStyle={styles.settingsContent}>
+          <Pressable style={styles.backRow} onPress={goSettingsMain}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.onSurfaceVariant} />
+            <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>Settings</Text>
+          </Pressable>
+          <DeviceSettingsPanel
+            colors={colors}
+            isDark={isDark}
+            deviceInfo={deviceInfo}
+            onAuthenticate={onAuthenticateDevice}
+            onReadSensor={onReadDeviceSensor}
+            onRefresh={onRefreshDevice}
+            onToggleTorch={onToggleDeviceTorch}
+          />
+        </ScrollView>
+      </SettingsPageMotion>
+    );
+  }
+
   if (settingsPage === "notification") {
     return (
       <SettingsPageMotion page={settingsPage} direction={settingsDirection} colors={colors} isDark={isDark}>
@@ -1806,21 +2216,26 @@ function SettingsTab({ settings, onUpdateSettings, isDark, palette, onReset, onR
     <SettingsPageMotion page={settingsPage} direction={settingsDirection} colors={colors} isDark={isDark}>
       <ScreenTitle isDark={isDark}>Settings</ScreenTitle>
       <ScrollView contentContainerStyle={styles.settingsContent}>
-        <Animatable.View animation="slideInUp" duration={440} delay={80} style={[styles.settingsList, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]} useNativeDriver>
-          {items.map(([icon, title, copy, action], index) => (
-            <Animatable.View key={title} animation="slideInRight" duration={390} delay={140 + index * 55} useNativeDriver>
-              <Pressable android_ripple={{ color: colors.surfaceVariant }} style={styles.settingsRow} onPress={action}>
-                <MaterialCommunityIcons name={icon} size={24} color={colors.onSurfaceVariant} />
+        <View style={styles.settingsCardList}>
+          {items.map(([icon, color, title, copy, action], index) => (
+            <Animatable.View key={title} animation="fadeInUp" duration={420} delay={100 + index * 60} useNativeDriver>
+              <Pressable
+                android_ripple={{ color: `${color}22` }}
+                style={[styles.settingsRowCard, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.cardOnDark]}
+                onPress={action}
+              >
+                <View style={[styles.settingsRowIcon, { backgroundColor: `${color}1F` }]}>
+                  <MaterialCommunityIcons name={icon} size={22} color={color} />
+                </View>
                 <View style={styles.settingsCopy}>
-                  <Text style={[styles.settingsTitle, isDark && styles.textOnDark]}>{title}</Text>
-                  <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{copy}</Text>
+                  <Text style={[styles.settingsRowTitle, title === "Reset" && { color }, isDark && title !== "Reset" && styles.textOnDark]}>{title}</Text>
+                  <Text style={[styles.settingsRowSubtitle, isDark && styles.mutedOnDark]}>{copy}</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
               </Pressable>
-              <Divider style={styles.settingsDivider} />
             </Animatable.View>
           ))}
-        </Animatable.View>
+        </View>
       </ScrollView>
     </SettingsPageMotion>
   );
@@ -1838,6 +2253,119 @@ function SettingsPageMotion({ page, direction, colors, isDark, children }) {
     >
       {children}
     </Animatable.View>
+  );
+}
+
+function DeviceSettingsPanel({ colors, isDark, deviceInfo, onAuthenticate, onReadSensor, onRefresh, onToggleTorch }) {
+  const batteryLevel = deviceInfo?.battery?.level;
+  const networkKnown = deviceInfo?.network != null;
+  const networkOnline = deviceInfo?.network?.isConnected === true;
+  const networkType = deviceInfo?.network?.type || "unknown";
+  const location = deviceInfo?.location?.coords;
+  const formatAxis = (data) => {
+    if (!data) return "Not sampled";
+    const fmt = (value) => (typeof value === "number" ? value.toFixed(3) : "--");
+    return `x ${fmt(data.x)} / y ${fmt(data.y)} / z ${fmt(data.z)}`;
+  };
+  const rows = [
+    {
+      icon: deviceInfo?.battery?.charging ? "battery-charging" : "battery",
+      color: batteryLevel != null && batteryLevel <= 20 ? colors.error : colors.primary,
+      title: "Battery",
+      value: batteryLevel == null ? "Unknown" : `${batteryLevel}%`,
+      subtitle: deviceInfo?.battery?.lowPowerMode ? "Low power mode" : deviceInfo?.battery?.charging ? "Charging" : batteryLevel == null ? "Tap refresh to read battery" : "Not charging"
+    },
+    {
+      icon: networkOnline ? "wifi" : networkKnown ? "wifi-off" : "wifi-alert",
+      color: networkOnline ? SUCCESS : networkKnown ? colors.error : colors.onSurfaceVariant,
+      title: "Network",
+      value: networkOnline ? "Connected" : networkKnown ? "Offline" : "Unknown",
+      subtitle: networkKnown ? String(networkType).replace("_", " ").toLowerCase() : "Tap refresh to read network"
+    },
+    {
+      icon: "map-marker",
+      color: location ? colors.primary : colors.onSurfaceVariant,
+      title: "Location",
+      value: location ? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}` : "Not available",
+      subtitle: location ? "Foreground location" : deviceInfo?.locationPermission === "denied" ? "Permission denied" : "Refresh to request permission"
+    },
+    {
+      icon: deviceInfo?.biometricAvailable ? "fingerprint" : "fingerprint-off",
+      color: deviceInfo?.biometricAvailable ? SUCCESS : colors.onSurfaceVariant,
+      title: "Biometric",
+      value: deviceInfo?.biometricAvailable ? "Available" : "Not available",
+      subtitle: "Local unlock test",
+      action: deviceInfo?.biometricAvailable ? onAuthenticate : null,
+      actionIcon: "shield-check"
+    },
+    {
+      icon: deviceInfo?.torchOn ? "flashlight" : "flashlight-off",
+      color: deviceInfo?.torchAvailable ? colors.primary : colors.onSurfaceVariant,
+      title: "Torch",
+      value: deviceInfo?.torchAvailable ? (deviceInfo?.torchOn ? "On" : "Available") : "Not available",
+      subtitle: "Hardware flashlight control",
+      action: deviceInfo?.torchAvailable ? onToggleTorch : null,
+      actionIcon: deviceInfo?.torchOn ? "power" : "flash"
+    }
+  ];
+
+  return (
+    <View style={[styles.devicePanel, { backgroundColor: colors.surface, borderColor: colors.outline }, isDark && styles.materialCardDark]}>
+      <View style={styles.devicePanelHero}>
+        <View style={[styles.devicePanelIcon, { backgroundColor: colors.primaryContainer }]}>
+          <MaterialCommunityIcons name="devices" size={28} color={colors.primary} />
+        </View>
+        <View style={styles.devicePanelCopy}>
+          <Text style={[styles.sectionTitle, isDark && styles.textOnDark]}>Device status</Text>
+          <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>
+            Local telemetry for testing the installed Android APK without pulling in unstable extra native modules.
+          </Text>
+        </View>
+      </View>
+      {rows.map((row, index) => (
+        <Animatable.View key={row.title} animation="slideInRight" delay={index * 70} duration={360} useNativeDriver>
+          <View style={[styles.deviceStatusRow, index > 0 && { borderTopColor: colors.outline, borderTopWidth: 1 }]}>
+            <View style={[styles.deviceStatusIcon, { backgroundColor: `${row.color}1F` }]}>
+              <MaterialCommunityIcons name={row.icon} size={22} color={row.color} />
+            </View>
+            <View style={styles.devicePanelCopy}>
+              <Text style={[styles.deviceStatusTitle, isDark && styles.textOnDark]}>{row.title}</Text>
+              <Text style={[styles.deviceStatusValue, { color: row.color }]}>{row.value}</Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{row.subtitle}</Text>
+            </View>
+            {row.action ? (
+              <Pressable style={[styles.deviceActionButton, { backgroundColor: `${row.color}1F`, borderColor: `${row.color}44` }]} onPress={row.action}>
+                <MaterialCommunityIcons name={row.actionIcon} size={18} color={row.color} />
+              </Pressable>
+            ) : null}
+          </View>
+        </Animatable.View>
+      ))}
+      <View style={[styles.deviceSensorCard, { backgroundColor: colors.surfaceVariant }]}>
+        <Text style={[styles.deviceStatusTitle, isDark && styles.textOnDark]}>Motion sensors</Text>
+        {[
+          ["accelerometer", "rotate-3d", "Accelerometer", deviceInfo?.accelerometer],
+          ["gyroscope", "compass-outline", "Gyroscope", deviceInfo?.gyroscope]
+        ].map(([key, icon, label, data]) => (
+          <View key={key} style={styles.deviceSensorRow}>
+            <MaterialCommunityIcons name={icon} size={18} color={colors.primary} />
+            <View style={styles.devicePanelCopy}>
+              <Text style={[styles.deviceSensorLabel, isDark && styles.textOnDark]}>{label}</Text>
+              <Text style={[styles.settingsDescription, isDark && styles.mutedOnDark]}>{formatAxis(data)}</Text>
+            </View>
+            <Pressable style={[styles.deviceReadButton, { borderColor: colors.primary }]} onPress={() => onReadSensor(key)}>
+              <Text style={[styles.deviceReadButtonText, { color: colors.primary }]}>Read</Text>
+            </Pressable>
+          </View>
+        ))}
+      </View>
+      {deviceInfo?.error ? (
+        <Text style={[styles.deviceErrorText, { color: colors.error }]}>{deviceInfo.error}</Text>
+      ) : null}
+      <Button mode="contained" buttonColor={colors.primary} loading={deviceInfo?.loading} onPress={onRefresh}>
+        Refresh device status
+      </Button>
+    </View>
   );
 }
 
@@ -1888,13 +2416,13 @@ function VisualCue({ reminder, size, iconSize, compact = false, palette }) {
   const colors = palette || getPalette({}, false);
   const visualType = reminder.visualType || (reminder.imageUri ? "image" : "icon");
   if (visualType === "image" && reminder.imageUri) {
-    return <Image source={{ uri: reminder.imageUri }} style={[styles.imagePlaceholder, { height: size, width: size }]} />;
+    return <Image source={{ uri: reminder.imageUri }} style={[styles.imagePlaceholder, { borderRadius: size / 2, height: size, width: size }]} />;
   }
 
   if (visualType === "emoji") {
     const isCompact = compact || size <= 48;
     return (
-      <View style={[isCompact ? styles.compactEmojiCueWrap : styles.imagePlaceholder, { backgroundColor: colors.primaryContainer, height: size, width: size }]}>
+      <View style={[isCompact ? styles.compactEmojiCueWrap : styles.imagePlaceholder, { backgroundColor: colors.primaryContainer, borderRadius: size / 2, height: size, width: size }]}>
         <Text
           style={[
             styles.emojiCue,
@@ -1911,7 +2439,7 @@ function VisualCue({ reminder, size, iconSize, compact = false, palette }) {
   }
 
   return (
-    <View style={[styles.imagePlaceholder, { backgroundColor: colors.primaryContainer, height: size, width: size }]}>
+    <View style={[styles.imagePlaceholder, { backgroundColor: colors.primaryContainer, borderRadius: size / 2, height: size, width: size }]}>
       <MaterialCommunityIcons name={reminder.icon || "bell-outline"} size={iconSize} color={colors.primary} />
     </View>
   );
@@ -2008,6 +2536,31 @@ async function configureNotificationChannel() {
     return;
   }
 
+  await Notifications.setNotificationChannelAsync(PRIORITY_CHANNELS.high, {
+    name: "High priority reminders",
+    importance: Notifications.AndroidImportance.MAX,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    sound: "default",
+    vibrationPattern: [0, 450, 200, 450],
+    audioAttributes: {
+      // ALARM usage makes Android treat the channel closer to a time-critical reminder.
+      usage: Notifications.AndroidAudioUsage.ALARM
+    }
+  });
+  await Notifications.setNotificationChannelAsync(PRIORITY_CHANNELS.medium, {
+    name: "Medium priority reminders",
+    importance: Notifications.AndroidImportance.DEFAULT,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    sound: "default",
+    vibrationPattern: [0, 250]
+  });
+  await Notifications.setNotificationChannelAsync(PRIORITY_CHANNELS.low, {
+    name: "Low priority reminders",
+    importance: Notifications.AndroidImportance.LOW,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    sound: null,
+    vibrationPattern: []
+  });
   await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL_ID, {
     name: "VizMinder reminders",
     importance: Notifications.AndroidImportance.MAX,
@@ -2015,7 +2568,6 @@ async function configureNotificationChannel() {
     sound: "default",
     vibrationPattern: [0, 450, 200, 450],
     audioAttributes: {
-      // ALARM usage makes Android treat the channel closer to a time-critical reminder.
       usage: Notifications.AndroidAudioUsage.ALARM
     }
   });
@@ -2045,7 +2597,7 @@ async function scheduleReminderNotification(reminder, settings = DEFAULT_SETTING
 
   // Installed Android builds use the native AlarmManager full-screen alarm path.
   // Skipping Expo's parallel local notification prevents duplicate alarm sounds.
-  if (Platform.OS === "android" && settings.fullScreenAlerts !== false) {
+  if (Platform.OS === "android" && settings.fullScreenAlerts !== false && (reminder.priority || "high") === "high") {
     await ensureNotificationPermission();
     return null;
   }
@@ -2064,8 +2616,13 @@ async function scheduleReminderNotification(reminder, settings = DEFAULT_SETTING
     content: {
       title: `VizMinder: ${reminder.title.trim() || "Reminder"}`,
       body: reminder.description?.trim() || "Time to check this reminder.",
-      sound: settings.notificationSound === false ? null : "default",
-      priority: Notifications.AndroidNotificationPriority.MAX,
+      sound: settings.notificationSound === false || reminder.priority === "low" ? null : "default",
+      priority:
+        reminder.priority === "low"
+          ? Notifications.AndroidNotificationPriority.LOW
+          : reminder.priority === "medium"
+            ? Notifications.AndroidNotificationPriority.DEFAULT
+            : Notifications.AndroidNotificationPriority.MAX,
       data: {
         reminderId: reminder.id
       }
@@ -2080,6 +2637,7 @@ function getReminderNotificationTrigger(reminder) {
     return null;
   }
 
+  const channelId = PRIORITY_CHANNELS[reminder.priority || "high"] || PRIORITY_CHANNELS.high;
   if (reminder.repeat) {
     if (!isRepeatStillActive(reminder, scheduled)) {
       return null;
@@ -2097,7 +2655,7 @@ function getReminderNotificationTrigger(reminder) {
       type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour: scheduled.getHours(),
       minute: scheduled.getMinutes(),
-      channelId: REMINDER_CHANNEL_ID
+      channelId
     };
   }
 
@@ -2111,7 +2669,7 @@ function getReminderNotificationTrigger(reminder) {
     type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
     seconds,
     repeats: false,
-    channelId: REMINDER_CHANNEL_ID
+    channelId
   };
 }
 
@@ -2295,16 +2853,16 @@ const styles = StyleSheet.create({
   },
   titleWrap: {
     alignItems: "center",
-    minHeight: 72,
+    minHeight: 88,
     justifyContent: "center",
     paddingBottom: 10,
-    paddingTop: 22
+    paddingTop: Platform.OS === "android" ? 42 : 28
   },
   screenTitle: {
     color: TEXT,
-    fontFamily: FONT_SEMIBOLD,
-    fontSize: 28,
-    fontWeight: "600",
+    fontFamily: FONT_BOLD,
+    fontSize: 32,
+    fontWeight: "900",
     letterSpacing: 0.15
   },
   titleAction: {
@@ -2412,8 +2970,113 @@ const styles = StyleSheet.create({
     marginRight: "auto"
   },
   homeList: {
-    paddingBottom: 102,
+    paddingBottom: 178,
+    paddingHorizontal: 14,
     paddingTop: 4
+  },
+  heroBanner: {
+    borderRadius: 22,
+    borderWidth: 1,
+    marginBottom: 14,
+    overflow: "hidden",
+    padding: 16
+  },
+  heroBannerAccent: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: 5
+  },
+  heroBannerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 14,
+    justifyContent: "space-between"
+  },
+  heroBannerCopy: {
+    flex: 1
+  },
+  heroBannerEyebrow: {
+    fontFamily: FONT_BOLD,
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 4,
+    textTransform: "uppercase"
+  },
+  heroBannerTitle: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 23,
+    fontWeight: "900",
+    lineHeight: 28
+  },
+  heroBannerSubtitle: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 4
+  },
+  heroRing: {
+    alignItems: "center",
+    borderRadius: 36,
+    borderWidth: 5,
+    height: 72,
+    justifyContent: "center",
+    width: 72
+  },
+  heroRingValue: {
+    fontFamily: FONT_BOLD,
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  heroRingLabel: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  heroProgressTrack: {
+    borderRadius: 8,
+    height: 8,
+    marginTop: 14,
+    overflow: "hidden"
+  },
+  heroProgressFill: {
+    borderRadius: 8,
+    height: "100%"
+  },
+  filterChipsRow: {
+    gap: 8,
+    paddingBottom: 10
+  },
+  filterChip: {
+    alignItems: "center",
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: 12
+  },
+  filterChipText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  filterChipCount: {
+    alignItems: "center",
+    borderRadius: 9,
+    justifyContent: "center",
+    minWidth: 20,
+    paddingHorizontal: 5
+  },
+  filterChipCountText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 11,
+    fontWeight: "900"
   },
   emptyHome: {
     alignItems: "center",
@@ -2453,10 +3116,114 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 96
   },
-  statsContent: {
-    gap: 14,
+  scheduleHeroCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    elevation: 4,
+    marginBottom: 16,
+    overflow: "hidden",
+    padding: 20,
+    shadowColor: "#000000",
+    shadowOffset: { height: 4, width: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12
+  },
+  scheduleHeroRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 16
+  },
+  scheduleHeroCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  scheduleHeroBadge: {
+    alignItems: "center",
+    borderRadius: 48,
+    borderWidth: 4,
+    height: 96,
+    justifyContent: "center",
+    width: 96
+  },
+  scheduleHeroBadgeValue: {
+    fontFamily: FONT_BOLD,
+    fontSize: 28,
+    fontWeight: "900",
+    letterSpacing: -0.5
+  },
+  scheduleHeroBadgeLabel: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  modernPanelCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    elevation: 3,
+    marginBottom: 14,
+    overflow: "hidden",
     padding: 16,
-    paddingBottom: 104
+    shadowColor: "#000000",
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10
+  },
+  panelHeaderRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12
+  },
+  panelHeaderMeta: {
+    fontFamily: FONT_BOLD,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  pageHeroCard: {
+    alignItems: "center",
+    borderRadius: 22,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 14,
+    marginBottom: 14,
+    padding: 16
+  },
+  pageHeroIcon: {
+    alignItems: "center",
+    borderRadius: 24,
+    height: 48,
+    justifyContent: "center",
+    width: 48
+  },
+  pageHeroCopy: {
+    flex: 1
+  },
+  pageHeroEyebrow: {
+    fontFamily: FONT_BOLD,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  pageHeroTitle: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 22,
+    fontWeight: "900",
+    marginTop: 3
+  },
+  pageHeroSubtitle: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 3
+  },
+  statsContent: {
+    gap: 10,
+    padding: 14,
+    paddingBottom: 96
   },
   statsHero: {
     alignItems: "center",
@@ -2464,26 +3231,123 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 18
   },
+  statsHeroCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    elevation: 5,
+    marginBottom: 0,
+    overflow: "hidden",
+    padding: 16,
+    shadowColor: "#000000",
+    shadowOffset: { height: 5, width: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14
+  },
+  statsHeroRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 16
+  },
+  statsHeroCopyWrap: {
+    flex: 1,
+    minWidth: 0
+  },
+  statsHeroEyebrow: {
+    fontFamily: FONT_BOLD,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    marginBottom: 7,
+    textTransform: "uppercase"
+  },
+  statsHeroTitle: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.4,
+    lineHeight: 27,
+    marginBottom: 4
+  },
+  statsHeroSubtitle: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 18
+  },
+  statsHeroRing: {
+    alignItems: "center",
+    borderRadius: 40,
+    borderWidth: 4,
+    height: 80,
+    justifyContent: "center",
+    width: 80
+  },
+  statsHeroRingValue: {
+    fontFamily: FONT_BOLD,
+    fontSize: 21,
+    fontWeight: "900"
+  },
+  statsHeroProgressTrack: {
+    borderRadius: 8,
+    height: 8,
+    marginTop: 14,
+    overflow: "hidden"
+  },
+  statsHeroProgressFill: {
+    borderRadius: 8,
+    height: "100%"
+  },
+  statsHeroMetaRow: {
+    borderTopColor: "rgba(127, 127, 127, 0.24)",
+    borderTopWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+    marginTop: 12,
+    paddingTop: 12
+  },
+  statsHeroMetaItem: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 7
+  },
+  statsHeroMetaText: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 13,
+    fontWeight: "700"
+  },
   statsHeroLabel: {
     fontSize: 13,
     fontWeight: "800",
     textTransform: "uppercase"
+  },
+  statsHeroHeadline: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 22,
+    fontWeight: "900",
+    marginTop: 6,
+    textAlign: "center"
   },
   statsHeroCopy: {
     color: MUTED,
     fontFamily: FONT_REGULAR,
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 16,
+    marginBottom: 8,
     textAlign: "center"
   },
   pieWrap: {
     alignItems: "center",
-    height: 156,
+    alignSelf: "center",
+    height: 132,
     justifyContent: "center",
-    marginBottom: 10,
-    marginTop: 14,
-    width: 156
+    marginBottom: 6,
+    marginTop: 8,
+    width: 132
   },
   pieCenter: {
     alignItems: "center",
@@ -2492,9 +3356,9 @@ const styles = StyleSheet.create({
   },
   pieCenterValue: {
     fontFamily: FONT_BOLD,
-    fontSize: 30,
+    fontSize: 26,
     fontWeight: "900",
-    lineHeight: 36
+    lineHeight: 31
   },
   pieCenterLabel: {
     color: MUTED,
@@ -2508,7 +3372,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 10,
     justifyContent: "center",
-    marginBottom: 14
+    marginBottom: 4
   },
   legendItem: {
     alignItems: "center",
@@ -2535,12 +3399,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     flex: 1,
-    minHeight: 112,
-    padding: 12
+    minHeight: 92,
+    padding: 10
+  },
+  statsCardIcon: {
+    alignItems: "center",
+    borderRadius: 15,
+    height: 46,
+    justifyContent: "center",
+    width: 46
   },
   statsMiniValue: {
     fontFamily: FONT_BOLD,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "900",
     marginTop: 6
   },
@@ -2571,7 +3442,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     fontSize: 13,
     lineHeight: 19,
-    marginBottom: 12,
+    marginBottom: 8,
     maxWidth: 260,
     textAlign: "center"
   },
@@ -2579,6 +3450,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: 12,
+    paddingVertical: 10
+  },
+  scheduleTaskRow: {
+    alignItems: "center",
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 8,
+    paddingHorizontal: 12,
     paddingVertical: 10
   },
   scheduleCopy: {
@@ -2620,14 +3501,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: SURFACE,
     borderColor: LINE,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
+    elevation: 2,
     flexDirection: "row",
-    marginHorizontal: 14,
     marginVertical: 6,
     minHeight: 70,
-    overflow: "visible",
-    paddingHorizontal: 16
+    overflow: "hidden",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    shadowColor: "#000000",
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 5
+  },
+  taskRowDone: {
+    opacity: 0.68
+  },
+  taskAccent: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: 4
   },
   visualBubble: {
     alignItems: "center",
@@ -2661,10 +3557,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18
   },
+  taskBadgesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 7
+  },
+  taskMetaBadge: {
+    alignItems: "center",
+    borderRadius: 7,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3
+  },
+  taskMetaBadgeText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 10,
+    fontWeight: "800"
+  },
   taskActions: {
     alignItems: "center",
     flexDirection: "row",
     gap: 4
+  },
+  completeButton: {
+    alignItems: "center",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    height: 36,
+    justifyContent: "center",
+    width: 36
   },
   testButton: {
     alignItems: "center",
@@ -2709,6 +3633,20 @@ const styles = StyleSheet.create({
     height: 42,
     justifyContent: "center",
     width: 48
+  },
+  floatingAddButton: {
+    alignItems: "center",
+    borderRadius: 26,
+    elevation: 8,
+    height: 52,
+    justifyContent: "center",
+    position: "absolute",
+    right: 24,
+    shadowColor: "#000000",
+    shadowOffset: { height: 4, width: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    width: 52
   },
   reminderScreen: {
     alignItems: "center",
@@ -2781,7 +3719,7 @@ const styles = StyleSheet.create({
   imagePlaceholder: {
     alignItems: "center",
     backgroundColor: PRIMARY_CONTAINER,
-    borderRadius: 24,
+    borderRadius: 999,
     justifyContent: "center"
   },
   emojiCue: {
@@ -2989,6 +3927,199 @@ const styles = StyleSheet.create({
   actionButton: {
     borderRadius: 28
   },
+  accountHeroCard: {
+    alignItems: "center",
+    borderRadius: 22,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 14,
+    marginBottom: 14,
+    marginHorizontal: 16,
+    padding: 16
+  },
+  modernAccountCard: {
+    alignItems: "center",
+    borderRadius: 24,
+    borderWidth: 1,
+    elevation: 4,
+    flexDirection: "row",
+    gap: 16,
+    marginHorizontal: 16,
+    marginBottom: 14,
+    overflow: "hidden",
+    padding: 18,
+    shadowColor: "#000000",
+    shadowOffset: { height: 4, width: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12
+  },
+  accountTint: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: 6
+  },
+  accountAvatar: {
+    alignItems: "center",
+    borderRadius: 34,
+    borderWidth: 1,
+    height: 68,
+    justifyContent: "center",
+    width: 68
+  },
+  accountInfo: {
+    flex: 1,
+    minWidth: 0
+  },
+  accountNameModern: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.2
+  },
+  accountEmail: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 4
+  },
+  accountStatusBadge: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: 14,
+    flexDirection: "row",
+    gap: 5,
+    marginTop: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5
+  },
+  accountStatusText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  modernAuthCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    elevation: 3,
+    marginHorizontal: 16,
+    marginBottom: 14,
+    padding: 18,
+    shadowColor: "#000000",
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10
+  },
+  authHeader: {
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 14
+  },
+  authTitle: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 21,
+    fontWeight: "900"
+  },
+  authSubtitle: {
+    color: MUTED,
+    fontFamily: FONT_REGULAR,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center"
+  },
+  authActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12
+  },
+  authButton: {
+    borderRadius: 22,
+    flex: 1
+  },
+  syncStats: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 14
+  },
+  syncStatItem: {
+    alignItems: "center",
+    backgroundColor: "rgba(127, 127, 127, 0.08)",
+    borderRadius: 16,
+    flex: 1,
+    padding: 12
+  },
+  syncStatValue: {
+    fontFamily: FONT_BOLD,
+    fontSize: 24,
+    fontWeight: "900"
+  },
+  syncStatLabel: {
+    color: MUTED,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2
+  },
+  syncProgressContainer: {
+    borderRadius: 8,
+    height: 8,
+    marginBottom: 14,
+    overflow: "hidden"
+  },
+  syncProgressBar: {
+    borderRadius: 8,
+    height: "100%"
+  },
+  syncButton: {
+    borderRadius: 22,
+    marginBottom: 10
+  },
+  signOutButton: {
+    borderRadius: 22
+  },
+  modernSyncListCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    marginHorizontal: 16,
+    marginBottom: 14,
+    padding: 16
+  },
+  syncListTitle: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 10
+  },
+  syncListItem: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    paddingVertical: 8
+  },
+  syncListItemText: {
+    color: MUTED,
+    flex: 1,
+    fontFamily: FONT_MEDIUM,
+    fontSize: 13
+  },
+  syncListBadge: {
+    alignItems: "center",
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4
+  },
+  syncListBadgeText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 11,
+    fontWeight: "800"
+  },
   accountCard: {
     alignItems: "center",
     backgroundColor: SURFACE,
@@ -3102,6 +4233,60 @@ const styles = StyleSheet.create({
   settingsContent: {
     paddingBottom: 104
   },
+  settingsHeroCard: {
+    alignItems: "center",
+    borderRadius: 22,
+    borderWidth: 1,
+    marginBottom: 14,
+    marginHorizontal: 16,
+    padding: 20
+  },
+  settingsHeroIcon: {
+    alignItems: "center",
+    borderRadius: 28,
+    height: 56,
+    justifyContent: "center",
+    width: 56
+  },
+  settingsCardList: {
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 2
+  },
+  settingsRowCard: {
+    alignItems: "center",
+    borderRadius: 18,
+    borderWidth: 1,
+    elevation: 2,
+    flexDirection: "row",
+    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    shadowColor: "#000000",
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6
+  },
+  settingsRowIcon: {
+    alignItems: "center",
+    borderRadius: 14,
+    height: 42,
+    justifyContent: "center",
+    width: 42
+  },
+  settingsRowTitle: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 16,
+    fontWeight: "900",
+    marginBottom: 2
+  },
+  settingsRowSubtitle: {
+    color: MUTED,
+    fontFamily: FONT_REGULAR,
+    fontSize: 13,
+    lineHeight: 18
+  },
   backRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -3172,6 +4357,94 @@ const styles = StyleSheet.create({
   settingsDivider: {
     backgroundColor: LINE,
     height: 1
+  },
+  devicePanel: {
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: 12,
+    padding: 16
+  },
+  devicePanelHero: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12
+  },
+  devicePanelIcon: {
+    alignItems: "center",
+    borderRadius: 24,
+    height: 48,
+    justifyContent: "center",
+    width: 48
+  },
+  devicePanelCopy: {
+    flex: 1
+  },
+  deviceStatusRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    paddingVertical: 12
+  },
+  deviceStatusIcon: {
+    alignItems: "center",
+    borderRadius: 22,
+    height: 44,
+    justifyContent: "center",
+    width: 44
+  },
+  deviceStatusTitle: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  deviceStatusValue: {
+    fontFamily: FONT_BOLD,
+    fontSize: 17,
+    fontWeight: "900",
+    marginTop: 2
+  },
+  deviceActionButton: {
+    alignItems: "center",
+    borderRadius: 18,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: "center",
+    width: 36
+  },
+  deviceSensorCard: {
+    borderRadius: 18,
+    gap: 10,
+    padding: 12
+  },
+  deviceSensorRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10
+  },
+  deviceSensorLabel: {
+    color: TEXT,
+    fontFamily: FONT_BOLD,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  deviceErrorText: {
+    fontFamily: FONT_MEDIUM,
+    fontSize: 12,
+    lineHeight: 17
+  },
+  deviceReadButton: {
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 30,
+    justifyContent: "center",
+    paddingHorizontal: 10
+  },
+  deviceReadButtonText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 12,
+    fontWeight: "800"
   },
   bottomNav: {
     alignItems: "center",

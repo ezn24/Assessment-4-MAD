@@ -19,6 +19,7 @@ export function createReminderDraft(overrides = {}) {
     promptYesCount: 0,
     promptNoCount: 0,
     promptConfirmedCount: 0,
+    priority: "high",
     timeSet: true,
     hasDate: false,
     ringtone: "alarm",
@@ -45,6 +46,7 @@ export function serializeReminder(reminder) {
     promptYesCount: Number(reminder.promptYesCount || 0),
     promptNoCount: Number(reminder.promptNoCount || 0),
     promptConfirmedCount: Number(reminder.promptConfirmedCount || 0),
+    priority: reminder.priority || "high",
     timeSet: reminder.timeSet === false ? 0 : 1,
     hasDate: reminder.hasDate === false ? 0 : 1,
     completed: reminder.completed ? 1 : 0
@@ -63,6 +65,7 @@ export function hydrateReminder(row) {
     promptYesCount: Number(row.promptYesCount || 0),
     promptNoCount: Number(row.promptNoCount || 0),
     promptConfirmedCount: Number(row.promptConfirmedCount || 0),
+    priority: row.priority || "high",
     timeSet: row.timeSet !== 0,
     hasDate: row.hasDate !== 0,
     ringtone: row.ringtone || "alarm",

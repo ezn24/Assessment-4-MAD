@@ -20,12 +20,17 @@
     "android": {
       "package": "com.ezn24.vizmindera4",
       "permissions": [
+        "ACCESS_NETWORK_STATE",
         "CAMERA",
+        "FLASHLIGHT",
+        "INTERNET",
         "READ_MEDIA_IMAGES",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "POST_NOTIFICATIONS",
         "SCHEDULE_EXACT_ALARM",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
         "USE_FULL_SCREEN_INTENT",
         "WAKE_LOCK"
       ]
@@ -38,6 +43,8 @@
       "expo-notifications",
       "expo-image-picker",
       "expo-background-task",
+      "expo-local-authentication",
+      "expo-sensors",
       "@react-native-community/datetimepicker"
     ],
     "extra": {
