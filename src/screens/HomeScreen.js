@@ -266,41 +266,41 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   const refreshDeviceInfo = async ({ requestLocation = false } = {}) => {
     setDeviceInfo((current) => ({ ...current, loading: true }));
     const errors = [];
-    const [powerState, batteryLevel, batteryState, networkState, locationPermission] = await Promise.all([
-      Battery.getPowerStateAsync().catch((error) => {
-        errors.push(`Battery: ${error?.message || "unavailable"}`);
-        return null;
-      }),
-      Battery.getBatteryLevelAsync().catch(() => null),
-      Battery.getBatteryStateAsync().catch(() => null),
-      Network.getNetworkStateAsync().catch((error) => {
-        errors.push(`Network: ${error?.message || "unavailable"}`);
-        return null;
-      }),
-      requestLocation
-        ? Location.requestForegroundPermissionsAsync().catch((error) => {
-            errors.push(`Location permission: ${error?.message || "denied"}`);
-            return { granted: false, status: "denied" };
+    const withTimeout = async (label, promise, fallback = null, timeoutMs = 2500) => {
+      let timer;
+      try {
+        return await Promise.race([
+          promise,
+          new Promise((resolve) => {
+            timer = setTimeout(() => {
+              errors.push(`${label}: timed out`);
+              resolve(fallback);
+            }, timeoutMs);
           })
-        : Location.getForegroundPermissionsAsync().catch(() => ({ granted: false, status: "unknown" }))
+        ]);
+      } catch (error) {
+        errors.push(`${label}: ${error?.message || "unavailable"}`);
+        return fallback;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    const [powerState, batteryLevel, batteryState, networkState, locationPermission] = await Promise.all([
+      withTimeout("Battery power", Battery.getPowerStateAsync()),
+      withTimeout("Battery level", Battery.getBatteryLevelAsync()),
+      withTimeout("Battery state", Battery.getBatteryStateAsync()),
+      withTimeout("Network", Network.getNetworkStateAsync()),
+      requestLocation
+        ? withTimeout("Location permission", Location.requestForegroundPermissionsAsync(), { granted: false, status: "denied" }, 4000)
+        : withTimeout("Location permission", Location.getForegroundPermissionsAsync(), { granted: false, status: "unknown" }, 2000)
     ]);
     const [biometricAvailable, torchAvailable] = await Promise.all([
-      LocalAuthentication.hasHardwareAsync().then(async (hardware) => hardware && (await LocalAuthentication.isEnrolledAsync())).catch(() => false),
-      Torch.isAvailableAsync().catch(() => false)
+      withTimeout("Biometric", LocalAuthentication.hasHardwareAsync().then(async (hardware) => hardware && (await LocalAuthentication.isEnrolledAsync())), false),
+      withTimeout("Torch", Torch.isAvailableAsync(), false)
     ]);
-    let location = null;
-    if (locationPermission?.granted) {
-      location =
-        (await Location.getLastKnownPositionAsync().catch(() => null)) ||
-        (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch((error) => {
-          errors.push(`Location: ${error?.message || "unavailable"}`);
-          return null;
-        }));
-    }
     const resolvedBatteryLevel = powerState?.batteryLevel ?? batteryLevel;
     const resolvedBatteryState = powerState?.batteryState ?? batteryState;
-    setDeviceInfo((current) => ({
-      ...current,
+    const baseDeviceInfo = {
       battery:
         resolvedBatteryLevel == null
           ? { level: null, charging: false, lowPowerMode: Boolean(powerState?.lowPowerMode), state: resolvedBatteryState ?? Battery.BatteryState.UNKNOWN }
@@ -312,11 +312,28 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
             },
       network: networkState,
       biometricAvailable,
+      locationPermission: locationPermission?.status || (locationPermission?.granted ? "granted" : "unknown"),
+      torchAvailable
+    };
+    setDeviceInfo((current) => ({
+      ...current,
+      ...baseDeviceInfo,
+      error: errors.join("\n"),
+      loading: Boolean(locationPermission?.granted && requestLocation),
+      torchOn: current.torchOn
+    }));
+    let location = null;
+    if (locationPermission?.granted) {
+      location =
+        (await withTimeout("Last known location", Location.getLastKnownPositionAsync(), null, 1800)) ||
+        (await withTimeout("Current location", Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest }), null, 3500));
+    }
+    setDeviceInfo((current) => ({
+      ...current,
+      ...baseDeviceInfo,
       error: errors.join("\n"),
       location,
-      locationPermission: locationPermission?.status || (locationPermission?.granted ? "granted" : "unknown"),
       loading: false,
-      torchAvailable,
       torchOn: current.torchOn
     }));
   };
