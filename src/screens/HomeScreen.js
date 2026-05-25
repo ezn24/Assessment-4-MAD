@@ -697,35 +697,53 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
     ]);
   };
 
+  const resetAllReminders = async () => {
+    if (Notifications) {
+      await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+    }
+    await Promise.all(reminders.map((reminder) => cancelNativeAlarm(reminder.id).catch(() => false)));
+    resetPrototype();
+    setUndoDelete(null);
+    setMessage("Reminder data reset.");
+  };
+
   const confirmResetReminders = () => {
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm("Reset all reminders? This deletes every reminder on this device and cancels scheduled alerts.");
+      if (confirmed) {
+        resetAllReminders();
+      }
+      return;
+    }
     Alert.alert("Reset all reminders?", "This deletes every reminder on this device and cancels scheduled alerts. This action cannot be undone.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Reset",
         style: "destructive",
-        onPress: async () => {
-          if (Notifications) {
-            await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
-          }
-          await Promise.all(reminders.map((reminder) => cancelNativeAlarm(reminder.id).catch(() => false)));
-          resetPrototype();
-          setUndoDelete(null);
-          setMessage("Reminder data reset.");
-        }
+        onPress: resetAllReminders
       }
     ]);
   };
 
+  const resetAllStats = () => {
+    resetStats();
+    setMessage("Stats reset and queued for cloud sync.");
+  };
+
   const confirmResetStats = () => {
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm("Reset stats? This clears Yes, No, and Really done counters for every task. Your tasks will stay.");
+      if (confirmed) {
+        resetAllStats();
+      }
+      return;
+    }
     Alert.alert("Reset stats?", "This clears Yes, No, and Really done counters for every task. Your tasks will stay.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Reset stats",
         style: "destructive",
-        onPress: () => {
-          resetStats();
-          setMessage("Stats reset and queued for cloud sync.");
-        }
+        onPress: resetAllStats
       }
     ]);
   };
@@ -954,9 +972,10 @@ export default function HomeScreen({ settings: appSettings = DEFAULT_SETTINGS, o
   );
 }
 
-function ScreenTitle({ children, action, isDark = false }) {
+function ScreenTitle({ children, action, leading, isDark = false }) {
   return (
     <View style={styles.titleWrap}>
+      {leading ? <View style={styles.titleLeading}>{leading}</View> : null}
       <Text style={[styles.screenTitle, isDark && styles.textOnDark]}>{children}</Text>
       {action ? <View style={styles.titleAction}>{action}</View> : null}
     </View>
@@ -1757,7 +1776,22 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onPickImage
   const priorityLabel = PRIORITY_OPTIONS.find(([value]) => value === (reminder.priority || "high"))?.[1] || "High";
   return (
     <Animatable.View animation="fadeInUp" duration={240} style={[styles.screen, { backgroundColor: colors.background }, isDark && styles.screenDark]} useNativeDriver>
-      <ScreenTitle isDark={isDark}>{mode === "add" ? "Add Task" : "Edit Task"}</ScreenTitle>
+      <ScreenTitle
+        isDark={isDark}
+        leading={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            android_ripple={{ color: `${colors.primary}22`, borderless: true }}
+            style={styles.titleBackButton}
+            onPress={onCancel}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={26} color={colors.onSurface} />
+          </Pressable>
+        }
+      >
+        {mode === "add" ? "Add Task" : "Edit Task"}
+      </ScreenTitle>
       <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled">
         <View style={styles.imageEditWrap}>
           <VisualCue reminder={reminder} size={104} iconSize={48} palette={colors} />
@@ -1874,14 +1908,27 @@ function TaskEditScreen({ reminder, mode, isDark, palette, onUpdate, onPickImage
               Delete
             </Button>
           ) : null}
-          <Button mode="contained" buttonColor={colors.primary} textColor={colors.onPrimary} style={styles.actionButton} onPress={onSave}>
-            Save
-          </Button>
           <Button mode="outlined" textColor={colors.onSurfaceVariant} style={styles.actionButton} onPress={onCancel}>
             Cancel
           </Button>
         </View>
       </ScrollView>
+
+      <Animatable.View animation="zoomIn" duration={220} easing="ease-out-cubic" style={styles.saveFabWrap} useNativeDriver>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Save task"
+          android_ripple={{ color: "rgba(255,255,255,0.22)", borderless: false }}
+          style={({ pressed }) => [
+            styles.saveFab,
+            { backgroundColor: colors.primary, shadowColor: colors.primary },
+            pressed && styles.saveFabPressed
+          ]}
+          onPress={onSave}
+        >
+          <MaterialCommunityIcons name="content-save" size={28} color={colors.onPrimary} />
+        </Pressable>
+      </Animatable.View>
 
       {timeOpen ? (
         <DateTimePicker
@@ -3239,6 +3286,19 @@ const styles = StyleSheet.create({
     right: 16,
     top: 10
   },
+  titleLeading: {
+    left: 16,
+    position: "absolute",
+    top: Platform.OS === "android" ? 42 : 28,
+    zIndex: 2
+  },
+  titleBackButton: {
+    alignItems: "center",
+    borderRadius: 22,
+    height: 44,
+    justifyContent: "center",
+    width: 44
+  },
   topAction: {
     alignItems: "center",
     backgroundColor: PRIMARY_CONTAINER,
@@ -4087,7 +4147,7 @@ const styles = StyleSheet.create({
   editContent: {
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 32
+    paddingBottom: 132
   },
   imageEditWrap: {
     marginBottom: 14
@@ -4302,6 +4362,27 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     borderRadius: 28
+  },
+  saveFabWrap: {
+    bottom: 96,
+    position: "absolute",
+    right: 18,
+    zIndex: 10
+  },
+  saveFab: {
+    alignItems: "center",
+    borderRadius: 22,
+    elevation: 8,
+    height: 58,
+    justifyContent: "center",
+    shadowOffset: { height: 5, width: 0 },
+    shadowOpacity: 0.26,
+    shadowRadius: 12,
+    width: 58
+  },
+  saveFabPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.96 }]
   },
   accountHeroCard: {
     alignItems: "center",
