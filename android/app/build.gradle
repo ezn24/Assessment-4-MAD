@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.ezn24.vizmindera4'
+    namespace 'com.ezn24.vizminder'
     defaultConfig {
-        applicationId 'com.ezn24.vizmindera4'
+        applicationId 'com.ezn24.vizminder'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

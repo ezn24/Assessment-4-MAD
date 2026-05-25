@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AppState, Appearance, useColorScheme } from "react-native";
+import { AppState, Appearance, useColorScheme, Platform, NativeModules } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SystemUI from "expo-system-ui";
 import { useMaterial3Theme } from "@pchmn/expo-material3-theme";
@@ -32,8 +32,7 @@ export default function App() {
   const hookScheme = useColorScheme();
   const [appearanceScheme, setAppearanceScheme] = useState(Appearance.getColorScheme() || hookScheme || "light");
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const systemScheme = appearanceScheme || hookScheme || "light";
-  const activeScheme = settings.themeMode === "dark" ? "dark" : settings.themeMode === "light" ? "light" : "light";
+  const activeScheme = settings.themeMode === "dark" ? "dark" : "light";
   const isDark = activeScheme === "dark";
   const { theme: materialTheme } = useMaterial3Theme({ fallbackSourceColor: "#6750A4" });
 
@@ -42,7 +41,8 @@ export default function App() {
       .then((value) => {
         if (value) {
           const stored = JSON.parse(value);
-          setSettings((current) => ({ ...current, ...stored, themeMode: stored.themeMode === "dark" ? "dark" : "light" }));
+          const themeMode = stored.themeMode === "dark" ? "dark" : "light";
+          setSettings((current) => ({ ...current, ...stored, themeMode }));
         }
       })
       .catch(() => {});
@@ -106,6 +106,20 @@ export default function App() {
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(paperTheme.colors.background).catch(() => {});
   }, [paperTheme.colors.background]);
+
+  useEffect(() => {
+    if (Platform.OS === "android" && NativeModules.AlarmScheduler) {
+      const colors = paperTheme.colors;
+      NativeModules.AlarmScheduler.setTheme(
+        isDark,
+        colors.primary || (isDark ? "#D0BCFF" : "#4F378B"),
+        colors.primaryContainer || (isDark ? "#4F378B" : "#EADDFF"),
+        colors.background || (isDark ? "#141218" : "#FEF7FF"),
+        colors.onSurface || (isDark ? "#E6E0E9" : "#1D1B20"),
+        colors.onSurfaceVariant || (isDark ? "#CAC4D0" : "#49454F")
+      ).catch(() => {});
+    }
+  }, [isDark, paperTheme.colors]);
 
   return (
     // react-native-gesture-handler needs a native root view before Swipeable rows can work reliably.

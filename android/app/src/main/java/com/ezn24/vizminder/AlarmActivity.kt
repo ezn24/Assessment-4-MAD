@@ -1,4 +1,4 @@
-package com.ezn24.vizmindera4
+package com.ezn24.vizminder
 
 import android.app.Activity
 import android.app.AlarmManager
@@ -53,11 +53,25 @@ class AlarmActivity : Activity() {
     setContentView(buildReminderView(title, body, fireTime, emoji))
   }
 
+  private fun safeParseColor(hex: String, defaultColor: Int): Int {
+    if (hex.isBlank()) return defaultColor
+    return try {
+      Color.parseColor(hex)
+    } catch (_: Exception) {
+      defaultColor
+    }
+  }
+
   private fun buildReminderView(title: String, body: String, fireTime: String, emoji: String): LinearLayout {
-    val primary = Color.rgb(79, 55, 139)
-    val secondary = Color.rgb(200, 180, 255)
-    val surface = Color.rgb(255, 251, 254)
-    val visualBg = Color.rgb(234, 221, 255)
+    val prefs = getSharedPreferences("VizminderPrefs", Context.MODE_PRIVATE)
+    val isDark = prefs.getBoolean("isDarkTheme", false)
+    
+    val primary = safeParseColor(prefs.getString("primaryHex", "") ?: "", if (isDark) Color.rgb(208, 188, 255) else Color.rgb(79, 55, 139))
+    val secondary = safeParseColor(prefs.getString("secondaryHex", "") ?: "", if (isDark) Color.rgb(79, 55, 139) else Color.rgb(234, 221, 255))
+    val surface = safeParseColor(prefs.getString("backgroundHex", "") ?: "", if (isDark) Color.rgb(20, 18, 24) else Color.rgb(255, 251, 254))
+    val visualBg = safeParseColor(prefs.getString("secondaryHex", "") ?: "", if (isDark) Color.rgb(79, 55, 139) else Color.rgb(234, 221, 255))
+    val textColor = safeParseColor(prefs.getString("textColorHex", "") ?: "", if (isDark) Color.rgb(230, 224, 233) else Color.rgb(29, 27, 32))
+    val subtextColor = safeParseColor(prefs.getString("subtextColorHex", "") ?: "", if (isDark) Color.rgb(202, 196, 208) else Color.rgb(73, 69, 79))
 
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
@@ -66,16 +80,16 @@ class AlarmActivity : Activity() {
       setBackgroundColor(surface)
       layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
-
+ 
     val appName = TextView(this).apply {
       text = "VizMinder"
       textSize = 30f
       typeface = Typeface.DEFAULT
       gravity = Gravity.CENTER
-      setTextColor(Color.rgb(29, 27, 32))
+      setTextColor(textColor)
     }
     root.addView(appName, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
-
+ 
     val visual = TextView(this).apply {
       text = emoji
       textSize = 42f
@@ -84,9 +98,9 @@ class AlarmActivity : Activity() {
       includeFontPadding = false
     }
     root.addView(visual, LinearLayout.LayoutParams(dp(104), dp(104)).apply { topMargin = dp(14) })
-
+ 
     root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
-
+ 
     val time = TextView(this).apply {
       text = "It is ${formatAlarmTime(fireTime)} now !"
       textSize = 28f
@@ -95,7 +109,7 @@ class AlarmActivity : Activity() {
       setTextColor(primary)
     }
     root.addView(time, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-
+ 
     val question = TextView(this).apply {
       text = "Have you completed\n$title?"
       textSize = 22f
@@ -105,21 +119,21 @@ class AlarmActivity : Activity() {
       setPadding(0, dp(18), 0, dp(8))
     }
     root.addView(question, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-
+ 
     if (body.isNotBlank()) {
       val bodyView = TextView(this).apply {
         text = body
         textSize = 14f
         gravity = Gravity.CENTER
-        setTextColor(Color.rgb(73, 69, 79))
+        setTextColor(subtextColor)
         setPadding(dp(18), 0, dp(18), 0)
         maxLines = 2
       }
       root.addView(bodyView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
-
+ 
     root.addView(TextView(this), LinearLayout.LayoutParams(1, 0, 1f))
-
+ 
     val actionRow = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER
@@ -159,7 +173,7 @@ class AlarmActivity : Activity() {
     actionRow.addView(noButton, LinearLayout.LayoutParams(dp(104), dp(104)).apply { marginEnd = dp(24) })
     actionRow.addView(yesButton, LinearLayout.LayoutParams(dp(104), dp(104)).apply { marginStart = dp(24) })
     root.addView(actionRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-
+ 
     return root
   }
 

@@ -1,4 +1,4 @@
-package com.ezn24.vizmindera4
+package com.ezn24.vizminder
 
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -112,10 +112,28 @@ class AlarmSchedulerModule(private val reactContext: ReactApplicationContext) : 
     }
   }
 
+  @ReactMethod
+  fun setTheme(isDark: Boolean, primaryHex: String, secondaryHex: String, backgroundHex: String, textColorHex: String, subtextColorHex: String, promise: Promise) {
+    try {
+      val prefs = reactContext.getSharedPreferences("VizminderPrefs", Context.MODE_PRIVATE)
+      prefs.edit().apply {
+        putBoolean("isDarkTheme", isDark)
+        putString("primaryHex", primaryHex)
+        putString("secondaryHex", secondaryHex)
+        putString("backgroundHex", backgroundHex)
+        putString("textColorHex", textColorHex)
+        putString("subtextColorHex", subtextColorHex)
+      }.apply()
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("THEME_SAVE_FAILED", e)
+    }
+  }
+
   private fun requestCode(value: String): Int = value.hashCode()
 
   companion object {
-    const val ACTION_FIRE_ALARM = "com.ezn24.vizmindera4.ACTION_FIRE_ALARM"
+    const val ACTION_FIRE_ALARM = "com.ezn24.vizminder.ACTION_FIRE_ALARM"
     const val EXTRA_REMINDER_ID = "reminderId"
     const val EXTRA_TITLE = "title"
     const val EXTRA_BODY = "body"

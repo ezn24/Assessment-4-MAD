@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "VizMinder A4",
-    "slug": "vizminder-a4",
+    "name": "Vizminder",
+    "slug": "vizminder",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -18,7 +18,7 @@
       }
     },
     "android": {
-      "package": "com.ezn24.vizmindera4",
+      "package": "com.ezn24.vizminder",
       "permissions": [
         "ACCESS_NETWORK_STATE",
         "CAMERA",

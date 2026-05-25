@@ -1,4 +1,4 @@
-package com.ezn24.vizmindera4
+package com.ezn24.vizminder
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

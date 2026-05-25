@@ -1,4 +1,4 @@
-package com.ezn24.vizmindera4
+package com.ezn24.vizminder
 
 import android.app.Application
 import android.content.res.Configuration
