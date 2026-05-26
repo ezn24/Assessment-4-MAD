@@ -70,7 +70,7 @@ npm test
 
 ## Local APK Build
 
-The project supports local Android builds through the checked-in `android` folder. APK builds should use the Gradle wrapper directly rather than a custom PowerShell, Bash, or Node helper script. This keeps the build path transparent and usable on Windows, macOS, and Linux.
+The project supports local Android builds through the checked-in `android` folder. APK builds should use the Gradle wrapper directly rather than a custom PowerShell, Bash, or Node helper script. This keeps the build path transparent and usable on Windows, macOS, and Linux. There is no required custom build script in `scripts/`.
 
 Windows PowerShell:
 
@@ -254,6 +254,7 @@ Some OEM lock-screen policies can block direct full-screen display until the scr
 - [`date-fns`](https://www.npmjs.com/package/date-fns): date formatting and countdown labels.
 - [`react-native-calendars`](https://www.npmjs.com/package/react-native-calendars): Schedule month view.
 - [`expo-haptics`](https://www.npmjs.com/package/expo-haptics): tactile feedback for completion and deletion.
+- [`react-native-google-mobile-ads`](https://www.npmjs.com/package/react-native-google-mobile-ads): AdMob banner/interstitial/rewarded ad integration with defensive native-module fallback.
 - [`jest-expo`](https://www.npmjs.com/package/jest-expo): Jest preset for Expo tests.
 
 ## Contributing Guide
