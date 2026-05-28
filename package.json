@@ -6,8 +6,6 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
-    "android:build": "expo run:android",
-    "android:install": "cd android && gradlew.bat installDebug",
     "web": "expo start --web",
     "test": "jest",
     "export:android": "expo export --platform android --output-dir .expo-export-check",
