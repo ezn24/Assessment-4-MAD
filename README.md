@@ -200,11 +200,9 @@ Copy-Item android\app\build\outputs\apk\release\app-release.apk build\vizminder-
 Or on macOS / Linux:
 
 ```bash
+npm run export:android
 cd android
 ./gradlew assembleRelease
-cd ..
-mkdir -p build
-cp android/app/build/outputs/apk/release/app-release.apk build/vizminder-a4.apk
 ```
 
 Then run:

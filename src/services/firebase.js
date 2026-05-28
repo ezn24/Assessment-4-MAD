@@ -2,8 +2,10 @@ import { initializeApp, getApps } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
   getAuth,
+  getReactNativePersistence,
   initializeAuth,
   onAuthStateChanged,
+  setPersistence,
   signInAnonymously,
   signInWithEmailAndPassword,
   signOut
@@ -12,8 +14,9 @@ import { collection, deleteDoc, doc, getDocs, getFirestore, setDoc } from "fireb
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getExpoExtra } from "./expoConfig";
 
-const reactNativeAuthPersistence = {
+const asyncStorageAuthPersistence = {
   type: "LOCAL",
+  _shouldAllowMigration: true,
   async _isAvailable() {
     return true;
   },
@@ -30,6 +33,11 @@ const reactNativeAuthPersistence = {
   _addListener() {},
   _removeListener() {}
 };
+
+const reactNativeAuthPersistence =
+  typeof getReactNativePersistence === "function"
+    ? getReactNativePersistence(AsyncStorage)
+    : asyncStorageAuthPersistence;
 
 let firebaseServices = null;
 
@@ -74,6 +82,7 @@ export function getFirebaseServices() {
     auth = initializeAuth(app, { persistence: reactNativeAuthPersistence });
   } catch (_error) {
     auth = getAuth(app);
+    setPersistence(auth, reactNativeAuthPersistence).catch(() => {});
   }
   firebaseServices = {
     app,
